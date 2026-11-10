@@ -14,10 +14,13 @@
 //      workspace.activeEditor。编辑器获得焦点时把它指向我们，失去焦点时还原。
 //   2. 快捷键：弹窗打开时，Obsidian 默认屏蔽所有全局快捷键。这里只放行「编辑器命令」
 //      （加粗、斜体、插入链接、切换复选框……），关闭标签页、删除文件之类的全局命令照旧不响应。
+//      另外放行「增强编辑」插件里经逐个核对的格式命令（名单见 enhancedEditingCommands.js）：
+//      它们只认「当前打开的笔记」，执行的那一下临时把它换成描述框，执行完立刻换回。
 //   3. Esc：编辑时按 Esc 先退出编辑（光标离开描述框），再按一次才关闭弹窗，
 //      免得一下按掉、丢了刚写的描述。
-import { Component, Platform, Scope, TFile } from 'obsidian';
+import { Component, MarkdownView, Platform, Scope, TFile } from 'obsidian';
 import { placeholder as cmPlaceholder } from '@codemirror/view';
+import { ENHANCED_EDITING_COMMANDS } from './enhancedEditingCommands.js';
 
 /** 借来的编辑器类（第一次用时取得，之后复用） */
 let EditorClass = null;
@@ -191,6 +194,26 @@ export function createEmbeddedEditor(app, host, opts = {}) {
   // Tab / Shift+Tab 留给编辑器（列表缩进），不让外层把它当成「切换到下一个输入框」
   scope.register([], 'Tab', () => undefined);
   scope.register(['Shift'], 'Tab', () => undefined);
+  // 「增强编辑」的命令：执行的那一下，让「当前打开的笔记」（getActiveViewOfType(MarkdownView)）
+  // 临时指向描述框，执行完立刻换回。替身对象只带编辑器、所属笔记这几样，
+  // 没有保存之类的方法——万一有别的代码在这一瞬间拿到它并想写文件，会直接出错而不会误写。
+  const runOnThisEditor = (cmd) => {
+    const stand = { app, file, editor: ed.editor, getMode: () => 'source' };
+    const hadOwn = Object.prototype.hasOwnProperty.call(ws, 'getActiveViewOfType');
+    const prevFn = ws.getActiveViewOfType;
+    const patched = function (type) { return type === MarkdownView ? stand : prevFn.call(this, type); };
+    ws.getActiveViewOfType = patched;
+    ws.activeEditor = owner;
+    try {
+      return app.commands.executeCommand(cmd);
+    } finally {
+      // 只在仍是我们装的替换时才还原（期间若有别的插件也改了它，不去覆盖）
+      if (ws.getActiveViewOfType === patched) {
+        if (hadOwn) ws.getActiveViewOfType = prevFn;
+        else delete ws.getActiveViewOfType;
+      }
+    }
+  };
   // 其余按键：若是某个「编辑器命令」的快捷键，就对本编辑器执行该命令。
   // 匹配方式照搬 Obsidian 自己的快捷键分发（hotkeyManager.onTrigger），只是多了一道筛选
   const hm = app.hotkeyManager;
@@ -205,9 +228,13 @@ export function createEmbeddedEditor(app, host, opts = {}) {
       for (let i = 0; i < keys.length; i++) {
         if (!KeymapCls.isMatch(keys[i], ctx)) continue;
         const cmd = app.commands.findCommand(ids[i]);
-        if (!isEditorCommand(cmd) || (evt.repeat && !cmd.repeatable)) continue;
-        ws.activeEditor = owner;
-        if (app.commands.executeCommand(cmd)) return false; // 已执行：吃掉这次按键
+        if (!cmd || (evt.repeat && !cmd.repeatable)) continue;
+        if (isEditorCommand(cmd)) {
+          ws.activeEditor = owner;
+          if (app.commands.executeCommand(cmd)) return false; // 已执行：吃掉这次按键
+        } else if (ENHANCED_EDITING_COMMANDS.has(cmd.id)) {
+          if (runOnThisEditor(cmd)) return false;
+        }
       }
       return undefined; // 不是编辑器命令的快捷键：照常交给编辑器处理（打字、方向键等）
     });

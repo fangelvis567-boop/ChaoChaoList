@@ -33,6 +33,8 @@ if (!P.addClass) {
 export class Notice { constructor(msg) { console.log('[Notice]', msg); } }
 export class Setting {}
 export class Component { load() {} unload() {} addChild(c) { return c; } }
+/** 笔记视图类：演示页里只需要它存在（内嵌编辑器拿它判断类型） */
+export class MarkdownView {}
 /** 运行平台：演示页当作桌面端 */
 export const Platform = { isMobile: false };
 /** 按键范围：演示页里没有内嵌编辑器（会退回普通文本框），这里只需要它存在 */
