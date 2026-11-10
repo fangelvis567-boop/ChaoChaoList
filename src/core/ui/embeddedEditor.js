@@ -21,6 +21,7 @@
 import { Component, MarkdownView, Platform, Scope, TFile } from 'obsidian';
 import { placeholder as cmPlaceholder } from '@codemirror/view';
 import { ENHANCED_EDITING_COMMANDS } from './enhancedEditingCommands.js';
+import { QUICK_EDITING_COMMANDS } from './quickEditingCommands.js';
 
 /** 借来的编辑器类（第一次用时取得，之后复用） */
 let EditorClass = null;
@@ -214,7 +215,8 @@ export function createEmbeddedEditor(app, host, opts = {}) {
       }
     }
   };
-  // 其余按键：若是某个「编辑器命令」的快捷键，就对本编辑器执行该命令。
+  // 其余按键：若是某个「编辑器命令」的快捷键，就对本编辑器执行该命令；
+  // 增强编辑、Quick Editing 的普通命令只按各自的白名单放行（名单外的不响应）。
   // 匹配方式照搬 Obsidian 自己的快捷键分发（hotkeyManager.onTrigger），只是多了一道筛选
   const hm = app.hotkeyManager;
   const KeymapCls = app.keymap && app.keymap.constructor;
@@ -234,6 +236,10 @@ export function createEmbeddedEditor(app, host, opts = {}) {
           if (app.commands.executeCommand(cmd)) return false; // 已执行：吃掉这次按键
         } else if (ENHANCED_EDITING_COMMANDS.has(cmd.id)) {
           if (runOnThisEditor(cmd)) return false;
+        } else if (QUICK_EDITING_COMMANDS.has(cmd.id)) {
+          // Quick Editing 的命令认「当前编辑器」：指向描述框后直接执行，不用替换「当前打开的笔记」
+          ws.activeEditor = owner;
+          if (app.commands.executeCommand(cmd)) return false;
         }
       }
       return undefined; // 不是编辑器命令的快捷键：照常交给编辑器处理（打字、方向键等）
