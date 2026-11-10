@@ -1,11 +1,19 @@
 <template>
   <div class="subtasks">
     <ul v-if="items.length" class="sub-list">
-      <li v-for="s in items" :key="s.guid" class="sub-item" :class="{ done: s.completed, editing: editingGuid === s.guid }">
-        <i class="sub-check" :class="[{ done: s.completed }, subIcon(s)]" @click.stop="toggle(s, !s.completed)"></i>
-        <input v-if="editingGuid === s.guid" v-focus class="sub-edit" v-model="draft" @keydown.enter="onEditEnter($event, s)" @keydown.esc="onEditEsc" @blur="saveEdit(s)" />
-        <span v-else class="sub-sum" @dblclick="startEdit(s)">{{ s.summary }}</span>
-        <button v-if="editingGuid !== s.guid" class="sub-del" type="button" :title="$t('app.delSubtask')" @click.stop="remove(s)">×</button>
+      <li v-for="s in items" :key="s.guid" class="sub-item" :class="{ done: s.completed, cancel: s.cancelled }">
+        <i class="sub-check" :class="[{ done: s.completed }, statusIcon(s)]" @click.stop="toggle(s, !s.completed)"></i>
+        <!-- 点这一行 → 打开子任务自己的编辑窗口（描述 / 日期 / 优先级都在里面，改名也在里面改）。
+             标题后面的小标记：优先级、日期或时间、是否有描述、它自己的子任务数（自用改版） -->
+        <div class="sub-main" role="button" tabindex="0" v-tooltip="$t('app.openSubtaskTip')"
+             @click="open(s, $event)" @keydown.enter.prevent="open(s, $event)">
+          <span class="sub-sum" v-html="rich(s)"></span>
+          <span v-if="s.priority" class="sub-tag sub-prio">{{ s.priority }}</span>
+          <span v-if="dateLabel(s)" class="sub-tag"><i class="la la-calendar"></i>{{ dateLabel(s) }}</span>
+          <span v-if="s.description" class="sub-tag" v-tooltip="$t('app.subHasDesc')"><i class="la la-align-left"></i></span>
+          <span v-if="s.subtaskCount" class="sub-tag"><i class="la la-list-ul"></i>{{ s.subtaskCount }}</span>
+        </div>
+        <button class="sub-del" type="button" :title="$t('app.delSubtask')" @click.stop="remove(s)">×</button>
       </li>
     </ul>
 
@@ -36,11 +44,12 @@
 
 <script>
 import { Tasks } from '../composables/useTasks.js';
-import { isImeKey } from '../composables/tasks-logic.js';
+import { isImeKey, statusIcon, renderInlineHtml, dateText, timeText } from '../composables/tasks-logic.js';
 
 export default {
   name: 'SubtaskList',
-  emits: ['change'],
+  // change：子任务有增删改，通知外层刷新；open：用户点了某个子任务，请外层打开它的编辑窗口
+  emits: ['change', 'open'],
   props: {
     taskGuid: { type: String, required: true }
   },
@@ -50,63 +59,37 @@ export default {
       loading: false,
       adding: false,
       error: '',
-      newSummary: '',
-      editingGuid: '',
-      draft: ''
+      newSummary: ''
     };
-  },
-  // Vue3：自定义指令钩子 inserted → mounted
-  directives: {
-    focus: {
-      mounted(el) { el.focus(); if (el.select) el.select(); }
-    }
-  },
-  computed: {
-    doneCount() { return this.items.filter((s) => s.completed).length; },
-    pct() { return this.items.length ? Math.round((this.doneCount / this.items.length) * 100) : 0; }
   },
   watch: {
     taskGuid() { this.load(); }
   },
   created() { this.load(); },
   methods: {
-    subIcon(s) {
-      return s.completed ? 'la la-check-circle-o' : 'la la-circle-o';
+    // 状态图标：未完成 / 已完成 / 已取消（子任务在自己的窗口里也可以被取消）
+    statusIcon(s) { return statusIcon(s); },
+    // 标题：链接可点击、#标签显示成小标签（与各视图的任务标题一致）
+    rich(s) { return renderInlineHtml(s && s.summary); },
+    // 日期小标记：有日期显示「月/日」（带时刻则再加时间）；只有时间没有日期的，显示时间
+    dateLabel(s) {
+      if (s.dueAt) {
+        const tm = s.dueAllDay ? '' : timeText(s);
+        return dateText(s) + (tm ? ' ' + tm : '');
+      }
+      return s.time ? s.time + (s.timeEnd ? '-' + s.timeEnd : '') : '';
     },
-    /* ---------- 键盘：输入法组字期间的回车 / esc 不算快捷键 ---------- */
-    onEditEnter(e, s) {
-      if (isImeKey(e)) return;
-      this.saveEdit(s);
+    // 点子任务：交给外层（任务编辑窗口）打开它自己的编辑窗口；点的是标题里的链接则不拦截
+    open(s, e) {
+      if (e && e.target && e.target.closest && e.target.closest('a')) return;
+      this.$emit('open', s);
     },
-    onEditEsc(e) {
-      if (isImeKey(e)) return;
-      this.cancelEdit();
-    },
+    /* ---------- 键盘：输入法组字期间的回车不算快捷键 ---------- */
     onAddEnter(e) {
       if (isImeKey(e)) return;
       this.add();
     },
-    startEdit(s) {
-      this.editingGuid = s.guid;
-      this.draft = s.summary;
-    },
-    cancelEdit() {
-      this.editingGuid = '';
-      this.draft = '';
-    },
-    async saveEdit(s) {
-      const summary = this.draft.trim();
-      if (!summary || summary === s.summary) { this.cancelEdit(); return; }
-      try {
-        await Tasks.updateTask(s.guid, { summary });
-        s.summary = summary;
-        this.editingGuid = '';
-        this.draft = '';
-        this.$emit('change', this.items);
-      } catch (e) {
-        this.error = this.$t('app.saveFail') + (e && e.message || e);
-      }
-    },
+    // 从文件重新读取子任务。外层在子任务窗口关闭后也会调用它（经 ref），以拿到最新的行号
     async load() {
       this.loading = true; this.error = '';
       try {
@@ -122,6 +105,7 @@ export default {
       try {
         await Tasks.toggleComplete(s.guid, done);
         s.completed = done;
+        if (done) s.cancelled = false; // 勾选完成视为恢复，取消态一并清除（与数据层一致）
         this.$emit('change', this.items);
       } catch (e) {
         this.error = this.$t('app.opFail') + (e && e.message || e);
@@ -145,7 +129,9 @@ export default {
     async remove(s) {
       try {
         await Tasks.deleteTask(s.guid);
-        this.items = this.items.filter((x) => x.guid !== s.guid);
+        // 删掉一个子任务后，排在它后面的子任务在文件里的行号都变了，
+        // 必须从文件重新读一遍，否则再点它们会操作到错误的行
+        await this.load();
         this.$emit('change', this.items);
       } catch (e) {
         this.error = this.$t('app.delFail') + (e && e.message || e);
@@ -161,10 +147,15 @@ export default {
 .sub-item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; }
 .sub-check { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; font-size: 18px; line-height: 26px; color: var(--ink-soft); cursor: pointer; margin-top: 3px; }
 .sub-check.done { color: var(--gold); }
-.sub-sum { flex: 1 1 auto; min-width: 0; font-size: 15px; line-height: 26px; color: var(--ink); word-break: break-word; cursor: text; }
-.sub-item.done .sub-sum { color: var(--ink-soft); text-decoration: line-through; }
-.sub-edit { flex: 1 1 auto; min-width: 0; box-sizing: border-box; border: 1px solid var(--gold); border-radius: 6px; background: var(--gold-bg); padding: 0 6px; font: inherit; font-size: 15px; line-height: 26px; color: var(--ink); }
-.sub-edit:focus { outline: none; }
+/* 可点击的主体：标题 + 小标记，一行放不下时自动换行 */
+.sub-main { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; padding: 0 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; }
+.sub-main:hover, .sub-main:focus-visible { background: var(--background-modifier-hover); outline: none; }
+.sub-sum { min-width: 0; font-size: 15px; line-height: 26px; color: var(--ink); word-break: break-word; }
+.sub-item.done .sub-sum, .sub-item.cancel .sub-sum { color: var(--ink-soft); text-decoration: line-through; }
+/* 标题后面的小标记（优先级 / 日期 / 有描述 / 子任务数） */
+.sub-tag { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: 12px; line-height: 26px; color: var(--ink-soft); white-space: nowrap; }
+.sub-tag i { font-size: 13px; }
+.sub-prio { font-size: 13px; }
 .sub-del { flex: none; width: 22px; height: 22px; border: none; background: transparent; color: var(--ink-soft); font-size: 16px; line-height: 22px; cursor: pointer; border-radius: 6px; opacity: 0; margin-top: 2px; }
 .sub-item:hover .sub-del { opacity: 1; }
 .sub-del:hover { color: var(--el-color-danger, var(--text-error)); background: var(--background-modifier-hover); }

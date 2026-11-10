@@ -5,29 +5,8 @@ import { countInboxTasks, migrateInboxTasks, loadAll, loadChecklists, collectTag
 import { setColorScheme, setWeekStart, tagColorOf, usedTagColors, EXTRA_SCHEME_OPTIONS, isImeKey } from '../composables/tasks-logic.js';
 import { VIEW_MENU_ITEMS, DEFAULT_MENU_VIEWS, reorderViews } from '../composables/viewMenu.js';
 
-// 自检新版：比对 GitHub 仓库 main 分支 manifest 的 version 与本地版本
-const UPDATE_REPO = 'sishen0112/obsidian-DadaTodoList';
-
-// 语义化版本号比较（'x.y.z'）：a>b → 1，a<b → -1，相等 → 0
-function semverCompare(a, b) {
-  const pa = String(a || '').split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = String(b || '').split('.').map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i] || 0, y = pb[i] || 0;
-    if (x > y) return 1;
-    if (x < y) return -1;
-  }
-  return 0;
-}
-
-// 取线上最新版本号（GitHub raw manifest，main 分支）；失败抛错由调用处静默处理
-async function fetchLatestVersion() {
-  const url = 'https://raw.githubusercontent.com/' + UPDATE_REPO + '/main/manifest.json';
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const data = await res.json();
-  return data && data.version ? data.version : null;
-}
+// （自用改版）原先这里有「自检新版」：每次打开设置页都联网读取作者仓库的版本号。
+// 自用改版不跟随作者更新，已整段去掉；去掉后整个插件不再有任何联网请求。
 
 // 收件箱文件路径补全：输入时浮层建议库内 md 文件（也允许手输尚不存在的路径，启动时会自动创建）
 class MarkdownFileSuggest extends AbstractInputSuggest {
@@ -541,9 +520,8 @@ export class DadaTodoSettingTab extends PluginSettingTab {
         desc: '',
         render: safe((s) => {
           s.setName(plugin.manifest.name);
-          // 左侧说明区：每次打开设置都自检新版，显示是否最新 / 可更新及最新版本号
-          const statusEl = s.descEl.createSpan({ cls: 'dt-about-update-status' });
-          this.checkForUpdate(statusEl, T);
+          // 左侧说明区（自用改版）：不再自检新版，只显示一句固定说明
+          s.descEl.createSpan({ cls: 'dt-about-update-status', text: T('customBuild') });
           // 右侧控件：当前版本号 + 更新日志按钮
           const row = s.controlEl.createDiv('dt-about-links');
           row.createSpan({ text: T('version') + ' ' + (plugin.manifest.version || ''), cls: 'dt-about-version-tag' });
@@ -693,41 +671,6 @@ export class DadaTodoSettingTab extends PluginSettingTab {
   }
 
   // 自检新版：每次打开设置页（关于区第一行）自动调用。
-  // 比对 GitHub 仓库 main 分支 manifest 的 version 与本地 manifest.version；
-  // 结果写在左侧说明区：是否最新，若不是则提示可更新并给出最新版本号与发布页链接。
-  async checkForUpdate(el, T) {
-    const cur = this.plugin.manifest.version || '';
-    el.setText(T('updateChecking'));
-    el.addClass('dt-about-update-checking');
-    try {
-      const latest = await fetchLatestVersion();
-      el.removeClass('dt-about-update-checking');
-      el.empty();
-      if (!latest) return; // 取不到版本号：不提示
-      const cmp = semverCompare(latest, cur);
-      if (cmp > 0) {
-        el.addClass('dt-about-update-available');
-        el.createSpan({ text: T('updateAvailable', { version: latest }) });
-        // 「前往更新」：点击直接打开 Obsidian 设置里的「第三方插件」页（非网页）
-        const link = el.createEl('span', { cls: 'dt-about-update-link' });
-        link.setText(T('updateGoto'));
-        link.addEventListener('click', (e) => {
-          e.preventDefault();
-          const settings = this.app.setting;
-          settings.open();
-          settings.openTabById('community-plugins');
-        });
-      } else if (cmp === 0) {
-        el.addClass('dt-about-update-latest');
-        el.setText(T('updateLatest'));
-      }
-      // cmp < 0（本地版本比线上还新，如开发版）：不提示
-    } catch (e) {
-      el.removeClass('dt-about-update-checking');
-      el.setText(''); // 网络不可达 / 被拦截：静默忽略，不影响设置页
-    }
-  }
-
   // 收件箱路径变更（输入逐字符触发 / 补全选中触发）：去抖 1s 后统一处理
   handleInboxPathChange(value) {
     const newPath = String(value || '').trim() || 'DadaTodoList.md';

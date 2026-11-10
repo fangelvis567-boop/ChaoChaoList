@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- 浏览器演示页：左边是假库里那篇笔记的原文，右边是任务编辑窗口。
+     根字号设成 19px，并照抄了 Blue Topaz 主题里那条把弹窗输入框定成 18rem 高的规则，
+     用来确认描述框能压过它。 -->
+<html lang="zh-CN" style="font-size: 19px">
+<head>
+  <meta charset="utf-8">
+  <title>Dada 编辑窗口演示</title>
+  <style>
+    /* 编辑窗口的样式依赖 Obsidian 的主题变量，这里给一组浅色的替代值 */
+    :root {
+      --background-primary: #ffffff; --background-secondary: #f4f5f7;
+      --background-modifier-border: #d6d9de; --background-modifier-hover: #eceef2;
+      --background-modifier-form-field: #ffffff;
+      --text-normal: #1f2328; --text-muted: #6b7280; --text-error: #d1242f;
+      --interactive-accent: #3b82f6; --interactive-accent-hover: #2563eb; --text-on-accent: #ffffff;
+      --tag-background: #e7eefc; --tag-color: #2b4fb8;
+    }
+    body { margin: 0; font-family: -apple-system, "PingFang SC", sans-serif; font-size: 14px; background: #e6e8eb; }
+    /* 左侧：笔记原文 */
+    #side { position: fixed; left: 0; top: 0; bottom: 0; width: 400px; box-sizing: border-box; padding: 12px; background: #16181d; color: #d7dae0; overflow: auto; z-index: 5; }
+    #side h4 { margin: 0 0 8px; font-size: 13px; color: #9aa4b2; font-weight: 600; }
+    #file { margin: 0; font: 12px/1.6 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all; }
+    #open { margin-top: 12px; }
+    /* 右侧：弹窗外壳，结构仿照 Obsidian */
+    .modal-container { position: fixed; left: 400px; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; }
+    .modal-bg { position: absolute; inset: 0; background: rgba(0, 0, 0, .28); }
+    .modal { position: relative; box-sizing: border-box; width: 560px; max-width: 90%; max-height: 92vh; overflow: auto; background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, .25); }
+    /* 照抄自 Blue Topaz 主题：造成描述框过高的那条规则 */
+    .modal-container .modal-content textarea:not(.rename-textarea) { height: 18rem !important; }
+  </style>
+</head>
+<body>
+  <div id="side">
+    <h4>假库里的笔记原文（→ 表示 Tab 缩进）</h4>
+    <pre id="file"></pre>
+    <button id="open" type="button">重新打开编辑窗口</button>
+  </div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

@@ -209,36 +209,127 @@ function makeNode(lineNo, indentStr, mark, text) {
   }, parseTaskText(text));
 }
 
+// 把某任务描述的原始行去掉公共缩进，得到编辑框里看到的 Markdown 原文（逐行存进 descTexts）。
+// 同时记下这段公共缩进比任务行多出来的部分（descRel），重写时原样加回去，
+// 这样没改过的描述写回文件时一个字符都不会变。
+function applyRawDesc(node, raw) {
+  const own = node.indentStr || '';
+  // 公共缩进 = 所有非空描述行「行首空白」的最长公共前缀
+  let common = null;
+  for (const s of raw) {
+    if (!s.trim()) continue;
+    const lead = s.slice(0, s.length - s.trimStart().length);
+    if (common == null) { common = lead; continue; }
+    let k = 0;
+    while (k < common.length && k < lead.length && common[k] === lead[k]) k++;
+    common = common.slice(0, k);
+  }
+  common = common || '';
+  if (common.indexOf(own) === 0) {
+    // 常规情况：描述的缩进是在任务自身缩进的基础上再往里缩
+    node.descTexts = raw.map((s) => (s.trim() ? s.slice(common.length).replace(/\s+$/, '') : ''));
+    node.descRel = common.slice(own.length);
+  } else {
+    // 缩进不规整（Tab 与空格混用，对不上任务自身的缩进）：退回「逐行去掉缩进」的老办法，
+    // 重写时统一缩进一级（descRel 留空即用默认值）
+    node.descTexts = raw.map((s) => s.trim());
+    node.descRel = undefined;
+  }
+}
+
 // 正文 → { lines, roots }（roots 为顶层任务树，children 为子任务）
+//
+// 描述的存法（自用改版）：任务行下面「缩进更深、且不是任务行」的那一段，原样就是该任务的描述，
+// 按 Markdown 原文保存，不再给每一行加 "- " 前缀。因此：
+//   - 描述里的多级列表、标题、空行都能完整保留，打开笔记看到的和插件里一致；
+//   - 夹在两行描述之间的空行算作描述的一部分（行号记入 descLines，重写时一并替换）；
+//   - 描述块之前 / 之后的空行不算描述，保持原样留在文件里；
+//   - 旧版用「缩进的 - 列表」存的描述照常读入，只是会显示成列表（文件本身不动）。
 export function parseTasks(body) {
   const lines = String(body == null ? '' : body).split(/\r?\n/);
   const roots = [];
   const stack = [];
+  const rawDesc = new Map(); // 节点 → 该节点描述的原始行（含行首缩进；空行记为 ''）
   let lastTask = null;
+  let pendingBlank = []; // 上一行描述之后遇到的空行行号：要等下一行描述出现，才确认它们属于描述
 
   lines.forEach((line, i) => {
     const m = TASK_LINE_RE.exec(line);
     if (m) {
       const node = makeNode(i, m[1], m[2], m[3]);
       while (stack.length && stack[stack.length - 1].indent >= node.indent) stack.pop();
-      if (stack.length) stack[stack.length - 1].children.push(node);
-      else roots.push(node);
+      if (stack.length) {
+        // 挂在另一条任务下面 = 子任务：它的日期只写在自己这一行（见 toRecord / updateTask）
+        node.sub = true;
+        stack[stack.length - 1].children.push(node);
+      } else {
+        roots.push(node);
+      }
       stack.push(node);
       lastTask = node;
+      pendingBlank = [];
       return;
     }
-    if (!line.trim()) return; // 空行既不进描述，也不打断栈
+    if (!line.trim()) {
+      // 空行不打断栈；只有夹在同一任务的两行描述之间时，才并入描述
+      if (lastTask && lastTask.descLines.length) pendingBlank.push(i);
+      return;
+    }
     const indent = line.length - line.trimStart().length;
     if (lastTask && indent > lastTask.indent) {
+      const raw = rawDesc.get(lastTask) || [];
+      for (const b of pendingBlank) { lastTask.descLines.push(b); raw.push(''); }
+      pendingBlank = [];
       lastTask.descLines.push(i);
-      // 描述行在源文件里是「缩进的 - 列表」，剥掉我们写回时加的 - 前缀（兼容旧笔记的无前缀纯缩进描述）
-      lastTask.descTexts.push(line.trim().replace(/^-\s+/, ''));
+      raw.push(line);
+      rawDesc.set(lastTask, raw);
       return;
     }
     lastTask = null;
+    pendingBlank = [];
   });
 
+  for (const [node, raw] of rawDesc) applyRawDesc(node, raw);
   return { lines, roots };
+}
+
+// 描述框里的 Markdown 原文 → { lines, tasks }
+//   lines：逐行的描述（去掉行尾空白和首尾空行，中间的空行保留）
+//   tasks：写成 "- [ ] xxx" 的行。这种行在笔记里本来就是任务行，所以存盘时提升为子任务、
+//          不留在描述里；否则下次读文件时它们会被当成子任务，而排在它们后面的描述行会变成
+//          不属于任何任务的孤行。
+export function splitDescription(text) {
+  const lines = [];
+  const tasks = [];
+  for (const s of String(text == null ? '' : text).split(/\r?\n/)) {
+    const m = TASK_LINE_RE.exec(s);
+    if (m) { tasks.push({ mark: m[2], text: m[3] }); continue; }
+    lines.push(s.replace(/\s+$/, ''));
+  }
+  while (lines.length && !lines[0]) lines.shift();
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  return { lines, tasks };
+}
+
+// 由「复选框标记 + 行内文本」构造一个尚未落盘的子任务节点
+// （描述里的 "- [ ]" 行提升为子任务时用；行号 -1 表示文件里还没有它）
+export function nodeFromLine(mark, text) {
+  const node = makeNode(-1, '', mark, text);
+  node.sub = true;
+  return node;
+}
+
+// 描述的单行预览（清单视图里任务标题下面那一行小字）：取第一行非空内容，
+// 去掉行首的标题 / 引用 / 列表标记和常见的强调符号，只留文字。
+export function descPreview(text) {
+  const first = String(text == null ? '' : text).split(/\r?\n/).find((s) => s.trim()) || '';
+  return first.trim()
+    .replace(/^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)+/, '')
+    .replace(/!?\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+    .replace(/!?\[\[([^\]]+)\]\]/g, '$1')
+    .replace(/!?\[([^\]]*)\]\(([^)\s]+)\)/g, (m0, label, url) => label || url)
+    .replace(/\*\*|__|~~|==|`/g, '')
+    .trim();
 }
 
 // 深度优先展平（父在子前）
@@ -400,8 +491,10 @@ export function toRecord(dateKey, node, opts = {}) {
   const completed = !!node.completed;
   // 日期约定：
   //   - 清单 / 收件箱无「文件日期」，开始日(🛫)、结束日(📅)均来自行内标记；
-  //   - 每日笔记文件名表示「开始日」，📅 表示结束日（结束 > 开始时写入），🛫 可覆盖开始日。
-  const isDatedFile = !(dateKey === INBOX_KEY || String(dateKey || '').indexOf('cl:') === 0);
+  //   - 每日笔记文件名表示「开始日」，📅 表示结束日（结束 > 开始时写入），🛫 可覆盖开始日；
+  //   - 子任务（node.sub）不继承所在日记的日期：它有没有日期只看自己那一行的 📅 / 🛫，
+  //     这样子任务才能拥有独立的日期，没设日期的子任务也不会平白显示成父任务那一天。
+  const isDatedFile = !(dateKey === INBOX_KEY || String(dateKey || '').indexOf('cl:') === 0) && !node.sub;
   const fileMs = dateToMs(dateKey, node.time || '00:00');
   // ⏳（scheduled，计划日期）：仅解析进记录供展示，不参与排期（issue #13）
   const scheduledMs = node.scheduled ? dateToMs(node.scheduled, node.time || '00:00') : null;
@@ -479,8 +572,15 @@ export function serializeBlock(node, indentStr) {
   const ind = indentStr != null ? indentStr : (node.indentStr || '');
   const out = [serializeTaskLine(node, ind)];
   const childInd = ind + CHILD_INDENT;
-  // 描述以「缩进的 - 列表」写入源文件（与子任务同级缩进），便于在笔记里直接阅读 / 折叠
-  for (const t of node.descTexts || []) if (t) out.push(childInd + '- ' + t);
+  // 描述按 Markdown 原文逐行写回，只在行首补上缩进；夹在中间的空行写成真正的空行（首尾空行不写）
+  const desc = (node.descTexts || []).slice();
+  while (desc.length && !desc[0]) desc.shift();
+  while (desc.length && !desc[desc.length - 1]) desc.pop();
+  // 缩进前缀：读文件时记下的相对缩进（descRel）原样加回；新写的描述默认缩进一级
+  let rel = node.descRel != null ? node.descRel : CHILD_INDENT;
+  // 兜底：前缀为空时，描述行必须自带缩进，否则写出来会和任务行齐平、读回来就不算描述了
+  if (!rel && desc.some((s) => s && !/^[ \t]/.test(s))) rel = CHILD_INDENT;
+  for (const s of desc) out.push(s ? ind + rel + s : '');
   for (const c of node.children || []) out.push(...serializeBlock(c, childInd));
   return out;
 }
@@ -491,15 +591,16 @@ export function nodeFromTask(task, dateKey, opts = {}) {
   const allDay = !!t.dueAllDay;
   const time = (t.dueAt && !allDay) ? msToTime(t.dueAt) : '';
   const timeEnd = (t.dueEndAt && !allDay) ? msToTime(Number(t.dueEndAt)) : '';
-  const descTexts = String(t.description || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  // 描述按 Markdown 原文保留；其中写成 "- [ ]" 的行直接作为子任务一起创建
+  const desc = splitDescription(t.description);
   return {
     lineNo: -1,
     indent: 0,
     indentStr: '',
     completed: !!t.completed,
     descLines: [],
-    descTexts,
-    children: [],
+    descTexts: desc.lines,
+    children: desc.tasks.map((k) => nodeFromLine(k.mark, k.text)),
     summary: String(t.summary || '').trim(),
     time,
     timeEnd,

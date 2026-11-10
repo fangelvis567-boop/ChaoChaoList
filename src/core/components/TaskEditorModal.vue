@@ -3,11 +3,13 @@
     <div class="tk-modal">
       <button class="tk-close" @click="close"><i class="la la-times"></i></button>
       <div class="tk-modal-head">
-        <h3 class="tk-modal-title">{{ editing ? $t('editor.editTitle') : $t('editor.newTitle') }}</h3>
+        <h3 class="tk-modal-title">{{ editing ? (isSubtask ? $t('editor.editSubTitle') : $t('editor.editTitle')) : $t('editor.newTitle') }}</h3>
         <button v-if="editing" class="btn btn-icon" type="button" v-tooltip="$t('editor.openFileTip')" @click="openFile">
           <i class="la la-external-link"></i>
         </button>
       </div>
+      <!-- 子任务窗口：标题下方注明它属于哪个任务（自用改版） -->
+      <div v-if="isSubtask && parentTitle" class="tk-sub-of">{{ $t('editor.subOf', { name: parentTitle }) }}</div>
       <label class="tk-field">
         <span>{{ $t('editor.fieldTitle') }}</span>
         <input ref="sumInput" v-model="form.title" type="text" :placeholder="$t('editor.titlePh')" @keydown.enter="onTitleEnter" />
@@ -53,10 +55,13 @@
           <i class="la la-plus"></i>
         </button>
       </div>
-      <label class="tk-field">
-        <span>{{ $t('editor.desc') }}</span>
-        <textarea v-model="form.description" rows="3" :placeholder="$t('editor.descPh')"></textarea>
-      </label>
+      <!-- 描述（自用改版）：平时显示排版后的 Markdown，点击进入编辑。
+           外层用 div 而不是 label：label 会把点击转交给里面的输入框，干扰「点排版结果进入编辑」 -->
+      <div class="tk-field">
+        <span>{{ $t('editor.desc') }}<em class="tk-field-hint">{{ $t('editor.descMdHint') }}</em></span>
+        <markdown-field v-model="form.description" :app="plugin ? plugin.app : null" :source-path="sourcePath"
+                        :placeholder="$t('editor.descPh')" :edit-tip="$t('editor.descEditTip')" :disabled="saving" />
+      </div>
       <!-- 时间形态：单时间 / 时间段 / 全天 / 跨日期；各形态仅展示所需字段 -->
       <div class="tk-time-block">
         <div class="tk-tm-tabs">
@@ -117,7 +122,8 @@
       </label>
       <div v-if="editing" class="tk-sub">
         <div class="tk-sub-title">{{ $t('editor.subtasks') }}</div>
-        <subtask-list :task-guid="task.guid" @change="$emit('subtasks-changed', $event)" />
+        <!-- 点子任务 → openSubtask：在当前窗口上面再开一个编辑窗口（自用改版） -->
+        <subtask-list ref="subList" :task-guid="task.guid" @change="$emit('subtasks-changed', $event)" @open="openSubtask" />
       </div>
       <div v-if="error" class="tk-err">{{ error }}</div>
       <!-- 优先级：置于表单最下方 -->
@@ -164,19 +170,25 @@ import { Tasks } from '../composables/useTasks.js';
 import { splitSummary, composeSummary, sanitizeTag, isImeKey, PRIORITY_ICON, priorityToLevel, levelToPriorityEmoji, withAlpha, validHex } from '../composables/tasks-logic.js';
 import { LinkFormModal, ConfirmModal } from '../ui/modals.js';
 import { openTaskInFile } from '../utils/openTaskInFile.js';
+import { taskFilePath } from '../api/tasks.js';
+import { VueModal } from '../ui/VueModal.js';
 import SubtaskList from './SubtaskList.vue';
 import TimePicker from './TimePicker.vue';
 import DatePicker from './DatePicker.vue';
+import MarkdownField from './MarkdownField.vue';
 
 const pad = (n) => (n < 10 ? '0' + n : '' + n);
 function ymd(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
 
 export default {
   name: 'TaskEditorModal',
-  components: { SubtaskList, TimePicker, DatePicker },
+  components: { SubtaskList, TimePicker, DatePicker, MarkdownField },
   props: {
     open: { type: Boolean, default: false },
     task: { type: Object, default: null },
+    // 从父任务的子任务列表里点开时为 true：标题显示「编辑子任务」，并注明所属任务
+    isSubtask: { type: Boolean, default: false },
+    parentTitle: { type: String, default: '' },
     defaultDate: { type: String, default: '' },
     // 双击时间轴空白格新建：预填开始时刻（HH:MM），落到对应时间
     defaultTime: { type: String, default: '' },
@@ -216,6 +228,12 @@ export default {
       return !!(st && st.showScheduled === true);
     },
     isCrossDate() { return this.form.timeMode === 'crossdate'; },
+    // 任务所在笔记的路径：渲染描述里的双链、图片时以它为起点（新建任务还没有所在笔记，留空）
+    sourcePath() {
+      const t = this.task;
+      if (!t || !t.guid) return '';
+      return t.file || taskFilePath(t.date) || '';
+    },
     // 优先级四档（高 / 中 / 低 / 无，从左到右），图标取自 obsidian-tasks 风格；默认「无」
     priorityOptions() {
       return [
@@ -275,6 +293,13 @@ export default {
         timeMode = 'range';
         dueStart = pad(sd.getHours()) + ':' + pad(sd.getMinutes());
         dueEnd = pad(ed.getHours()) + ':' + pad(ed.getMinutes());
+      }
+      // 没有日期、但任务行开头写了时间（常见于日记里的子任务，如「09:00 查房」）：
+      // 把这个时间带进表单，免得之后一设日期，原来的时间就被默认时间顶掉（自用改版）
+      if (!sd && t.time) {
+        dueTime = t.time;
+        dueStart = t.time;
+        if (t.timeEnd) { timeMode = 'range'; dueEnd = t.timeEnd; }
       }
       const parts = splitSummary(t.summary);
       return {
@@ -452,6 +477,28 @@ export default {
         this.saving = false;
       }
     },
+    /* ---------- 子任务：点开后在当前窗口上面再开一个同样的编辑窗口（自用改版） ---------- */
+    openSubtask(sub) {
+      if (!sub || !this.plugin) return;
+      // 子任务窗口里做的任何改动（保存、删除、增删它自己的子任务）都可能让文件里的行号变化，
+      // 所以它一有动静，就重新读一遍本窗口的子任务列表，并通知外层视图刷新
+      const refresh = () => {
+        const list = this.$refs.subList;
+        if (list && typeof list.load === 'function') list.load();
+        this.$emit('subtasks-changed');
+      };
+      // this.$.type 就是本组件自身的定义：子任务用同一个编辑窗口，所以它也能再有自己的子任务
+      new VueModal(this.plugin.app, this.$.type, {
+        open: true,
+        task: sub,
+        plugin: this.plugin,
+        isSubtask: true,
+        parentTitle: (this.form.title || '').trim(),
+        onSaved: refresh,
+        onDeleted: refresh,
+        onSubtasksChanged: refresh
+      }).open();
+    },
     /* ---------- 打开任务所在的笔记，并高亮定位到任务所在行 ---------- */
     async openFile() {
       await openTaskInFile(this.plugin, this.task);
@@ -591,6 +638,10 @@ export default {
 .tk-tm-sep { flex: none; color: var(--ink-soft); font-weight: 700; }
 .tk-ic { font-size: 14px; color: var(--ink-soft); }
 .tk-ic.la-check-circle-o { color: var(--gold); }
+/* 子任务窗口标题下方的「属于：xxx」（自用改版） */
+.tk-sub-of { margin: -8px 0 14px; font-size: 12px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 字段名后面的小字提示，如描述旁的「支持 Markdown」 */
+.tk-field-hint { margin-left: 8px; font-style: normal; font-size: 12px; opacity: .75; }
 .tk-sub { margin: 4px 0 16px; padding-top: 14px; border-top: 1px dashed var(--line); }
 .tk-sub-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 6px; }
 

@@ -122,7 +122,7 @@
 <script>
 import { Tasks } from '../../composables/useTasks.js';
 import { taskFilePath } from '../../api/tasks.js';
-import { statusIcon, dateText, timeText, richSummaryNoTags, renderInlineHtml, scheduledText } from '../../composables/tasks-logic.js';
+import { statusIcon, dateText, timeText, richSummaryNoTags, renderInlineHtml, scheduledText, descPreview } from '../../composables/tasks-logic.js';
 import { VueModal } from '../../ui/VueModal.js';
 import TaskEditorModal from '../TaskEditorModal.vue';
 import { openTaskInFile } from '../../utils/openTaskInFile.js';
@@ -204,7 +204,8 @@ export default {
     statusIcon, richSummaryNoTags, renderInlineHtml, dateText, timeText, taskFilePath, scheduledText,
     pct(c) { return c.total ? Math.round((c.done / c.total) * 100) : 0; },
     gKey(g) { return g.title || '___ungrouped'; },
-    firstLine(s) { return String(s || '').split(/\r?\n/)[0]; },
+    // 描述预览：取第一行文字并去掉 Markdown 符号（描述现在按 Markdown 原文保存）
+    firstLine(s) { return descPreview(s); },
     async selectList(key) {
       this.activeKey = key;
       const c = this.lists.find((x) => x.key === key);

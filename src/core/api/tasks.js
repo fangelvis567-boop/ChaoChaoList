@@ -10,7 +10,7 @@ import {
   INBOX_KEY, CHILD_INDENT,
   parseTasks, toRecord, serializeBlock, serializeTaskLine,
   nodeFromTask, locateNode, collectLineNos, todayKey, parseGuid, msToTime, dateToMs, flattenTasks,
-  priorityRank, splitSummary
+  priorityRank, splitSummary, splitDescription, nodeFromLine
 } from '../composables/tasks-logic.js';
 
 let plugin = null;
@@ -435,22 +435,32 @@ export async function loadChecklistGroups(listKey) {
     const m = /^###\s+(.+?)\s*$/.exec(line);
     if (m) headings.push({ lineNo: idx, title: m[1].trim() });
   });
-  const records = flattenTasks(doc.roots).map((n) => recordOf(listKey, n));
-  const titled = headings.map((h) => ({ title: h.title, tasks: [] }));
-  const ungrouped = [];
-  for (const t of records) {
+  // 排序规则（自用改版）：按优先级、再按日期排，但只在「同一层的兄弟」之间比较——
+  // 顶层任务之间互相排，子任务只和同一个父任务下的其他子任务排，并且始终紧跟在父任务后面。
+  // 原先是把所有层级摊平后一起排，子任务一旦有了优先级或日期就会跑到父任务前面去。
+  const bySiblings = (a, b) => priorityRank(b.rec.priority) - priorityRank(a.rec.priority)
+    || (a.rec.dueAt || 0) - (b.rec.dueAt || 0);
+  // 把任务树的每个节点包成 { rec: 任务记录, kids: 子节点 }
+  const wrap = (n) => ({ rec: recordOf(listKey, n), kids: (n.children || []).map(wrap) });
+  // 按上面的规则把一组兄弟节点（连同各自的后代）展开成一维列表：父在前，子紧随其后
+  const emit = (items, out) => {
+    for (const it of items.slice().sort(bySiblings)) { out.push(it.rec); emit(it.kids, out); }
+    return out;
+  };
+  // 顶层任务归入它之前最近的一个 ### 标题（-1 = 标题之前，即未分组）；子任务跟随父任务
+  const buckets = new Map();
+  for (const root of doc.roots) {
     let gi = -1;
     for (let i = 0; i < headings.length; i++) {
-      if (headings[i].lineNo < t.lineNo) gi = i; else break;
+      if (headings[i].lineNo < root.lineNo) gi = i; else break;
     }
-    if (gi < 0) ungrouped.push(t); else titled[gi].tasks.push(t);
+    if (!buckets.has(gi)) buckets.set(gi, []);
+    buckets.get(gi).push(wrap(root));
   }
-  const sortGroup = (g) => Object.assign({}, g, {
-    tasks: g.tasks.slice().sort((a, b) => priorityRank(b.priority) - priorityRank(a.priority) || (a.dueAt || 0) - (b.dueAt || 0))
-  });
   const groups = [];
-  if (ungrouped.length) groups.push(sortGroup({ title: '', tasks: ungrouped }));
-  groups.push(...titled.map(sortGroup));
+  if (buckets.has(-1)) groups.push({ title: '', tasks: emit(buckets.get(-1), []) });
+  headings.forEach((h, i) => groups.push({ title: h.title, tasks: emit(buckets.get(i) || [], []) }));
+  const records = groups.reduce((all, g) => all.concat(g.tasks), []);
   const done = records.filter((t) => t.completed && !t.cancelled).length;
   return res(200, { ok: true, key: listKey, name: listNameOf(listKey), groups, total: records.length, done });
 }
@@ -595,7 +605,9 @@ export async function createChecklistTask(listKey, groupTitle, task) {
   const node = nodeFromTask(t, listKey, { addDoneDate: addDoneDateEnabled() });
   if (t.dueAt) node.due = todayKey(Number(t.dueAt));
   if (t.startAt) node.start = todayKey(Number(t.startAt));
-  const newLine = serializeTaskLine(node, '');
+  // 整块写入（任务行 + 描述 + 描述里提升出来的子任务）。
+  // 原先只写任务行，在清单分组里新建任务时填的描述会被丢掉。
+  const newLines = serializeBlock(node, '');
 
   const headings = [];
   doc.lines.forEach((line, idx) => {
@@ -614,7 +626,7 @@ export async function createChecklistTask(listKey, groupTitle, task) {
   }
 
   const lines = doc.lines.slice();
-  lines.splice(insertAt, 0, newLine);
+  lines.splice(insertAt, 0, ...newLines);
   await writeTasks(path, doc.head, lines);
   const created = Object.assign({}, node, { lineNo: insertAt });
   return res(201, { ok: true, task: recordOf(listKey, created) });
@@ -673,6 +685,7 @@ export async function createSubtask(parentGuid, task) {
   if (!parent) return res(404, { ok: false, reason: 'not_found' });
 
   const child = nodeFromTask(t, g.dateKey, { addDoneDate: addDoneDateEnabled() });
+  child.sub = true; // 子任务：日期只写在自己那一行，不继承所在日记的日期
   child.indentStr = (parent.indentStr || '') + CHILD_INDENT;
   child.indent = child.indentStr.length;
   const insertAt = Math.max(...collectLineNos(parent)) + 1;
@@ -703,9 +716,16 @@ export async function updateTask(guid, patch) {
     return res(404, { ok: false, reason: 'not_found' });
   }
 
+  // 先记下这块任务在文件里原本占用的行（任务行 + 描述行 + 子任务），后面整块替换。
+  // 必须在改动 node 之前取：下面可能往 node.children 里追加文件里还不存在的新子任务。
+  const removed = new Set(collectLineNos(node));
+
   if (p.summary != null) node.summary = String(p.summary).trim();
   if (p.description != null) {
-    node.descTexts = String(p.description).split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    // 描述按 Markdown 原文保存；其中写成 "- [ ]" 的行提升为子任务，追加在已有子任务之后
+    const desc = splitDescription(p.description);
+    node.descTexts = desc.lines;
+    for (const k of desc.tasks) node.children.push(nodeFromLine(k.mark, k.text));
   }
   // 优先级：空串表示清除优先级
   if (p.priority !== undefined) node.priority = p.priority;
@@ -738,7 +758,10 @@ export async function updateTask(guid, patch) {
   const hasStart = Object.prototype.hasOwnProperty.call(p, 'startAt');
   if (hasDue || hasStart) {
     const isList = isListKey(g.dateKey);
-    const isDated = !isList && g.dateKey !== INBOX_KEY;
+    // 日期只写在任务行内（📅/🛫）、不搬文件的三种情况：清单、收件箱，以及任何位置的子任务。
+    // 子任务的日期只属于它自己：改了日期也留在父任务下面，不会被搬到那一天的日记里。
+    const inlineOnly = isList || g.dateKey === INBOX_KEY || !!node.sub;
+    const isDated = !inlineOnly;
     let cs = isDated ? (node.start || g.dateKey) : (node.start || '');
     let cd = isDated ? (node.due || g.dateKey) : (node.due || '');
     if (!isDated) { if (!cs && cd) cs = cd; if (!cd && cs) cd = cs; }
@@ -751,10 +774,12 @@ export async function updateTask(guid, patch) {
       ? (p.dueEndAt != null ? Number(p.dueEndAt) : null)
       : (node.timeEnd ? dateToMs(cd || cs, node.timeEnd) : null);
     const endTime = (p.dueAllDay || !endMs) ? '' : (Number.isFinite(endMs) ? msToTime(endMs) : '');
-    if (isList || g.dateKey === INBOX_KEY) {
-      // 清单 / 收件箱：日期仅行内 📅/🛫，文件位置不变（顺延时也只改 📅，不迁移）
+    if (inlineOnly) {
+      // 清单 / 收件箱 / 子任务：日期仅行内 📅/🛫，文件位置不变（顺延时也只改 📅，不迁移）
       node.due = cd || '';
       node.start = cs || '';
+      // 子任务只有一天时只留 📅，不再重复写一个同日的 🛫，让笔记里那一行短一些
+      if (node.sub && node.start === node.due) node.start = '';
       node.time = p.dueAllDay ? '' : (p.dueAt != null ? msToTime(Number(p.dueAt)) : node.time);
       node.timeEnd = endTime;
     } else if (!cd) {
@@ -771,7 +796,6 @@ export async function updateTask(guid, patch) {
       node.timeEnd = endTime;
     }
   }
-  const removed = new Set(collectLineNos(node));
   const keep = doc.lines.filter((_, i) => !removed.has(i));
 
   if (targetKey === g.dateKey) {
