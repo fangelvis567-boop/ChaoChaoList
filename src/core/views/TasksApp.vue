@@ -75,6 +75,10 @@
     <!-- 任务块右键菜单（单例，teleport 到 body；日/周/月/日程/清单 共用） -->
     <task-context-menu />
 
+    <!-- 子任务悬停浮层（自用改版；单例，teleport 到 body）：周视图、月视图里停在带子任务的任务上时弹出 -->
+    <subtask-popover :task="subPop.task" :rect="subPop.rect" :hide-done="hideDone"
+                     @keep="subPopKeep" @leave="subPopLeave" />
+
     <!-- 底部悬浮胶囊视图切换（日/周/月/日程/清单/全部）；
          vertical 菜单样式下则为左侧固定可展开/收起菜单 -->
     <view-pill :view="view" :vertical="verticalMenu" :rail-collapsed="proRailCollapsed" :plugin="plugin"
@@ -114,6 +118,8 @@ import TaskListView from '../components/tasks/TaskListView.vue';
 import FourQuadrantView from '../components/tasks/FourQuadrantView.vue';
 import TaskContextMenu from '../components/tasks/TaskContextMenu.vue';
 import ViewPill from '../components/ViewPill.vue';
+import SubtaskPopover from '../components/tasks/SubtaskPopover.vue';
+import { buildCalendarTasks, hasSubtasks } from '../composables/subtasks.js';
 import { ConfirmModal } from '../ui/modals.js';
 import { getTaskViewPref, setTaskViewPref, getClMainViewPref, setClMainViewPref } from '../composables/viewPrefs.js';
 import { useListState } from '../composables/useListState.js';
@@ -127,7 +133,7 @@ export default {
   name: 'TasksApp',
   components: {
     TaskRow, ChecklistView, FourQuadrantView,
-    TaskMonthView, TaskAgendaView, TaskListView, TaskTopBar, WeekDayView, TaskContextMenu, ViewPill
+    TaskMonthView, TaskAgendaView, TaskListView, TaskTopBar, WeekDayView, TaskContextMenu, ViewPill, SubtaskPopover
   },
   setup() {
     // 列表视图状态域（筛选 / 清单 / 分桶 / 顺延）抽离至 useListState；
@@ -188,7 +194,9 @@ export default {
       // 清单（frontmatter tags 命中识别标记的 md 文件）
       checklists: [],
       // 清单主区视图（列表 / 分栏）：与顶栏切换按钮联动，持久化到 localStorage
-      clMainView: getClMainViewPref()
+      clMainView: getClMainViewPref(),
+      // 子任务悬停浮层（自用改版）：当前悬停的父任务与它在屏幕上的位置
+      subPop: { task: null, rect: null }
     };
   },
   watch: {
@@ -248,12 +256,15 @@ export default {
       const base = (d.getMonth() + 1) + '/' + d.getDate() + ' ' + weekdayLong(d);
       return (this.tlDayOffset === 0 ? this.$t('app.todayBadge') + ' ' : '') + base;
     },
+    // 日历类视图（日 / 周 / 月 / 日程）用的任务表（自用改版）：顶层任务，外加子任务的「↳ 副本」——
+    // 带自己日期、且不落在父任务那几天的子任务，在自己那天另放一份（规则见 composables/subtasks.js）
+    calendarTasks() { return buildCalendarTasks(this.tasks); },
     // 按天预分组：避免周/月视图每次渲染都对全量任务逐格过滤（上千任务 × 42 格）
     tasksByDay() {
       const rank = (t) => (t.cancelled ? 2 : t.completed ? 1 : 0); // 未完成→已完成→已取消
       const DAY = 86400000;
       const map = {};
-      for (const t of this.tasks) {
+      for (const t of this.calendarTasks) {
         if (!t.dueAt) continue;
         // 跨日期任务（开始日早于到期日）铺满开始日→到期日的每一天；逆序/单日只点到期日
         const startMs = spansDays(t) ? Number(t.startAt) : Number(t.dueAt);
@@ -289,7 +300,8 @@ export default {
     dueCountMap() {
       const m = new Map();
       const DAY = 86400000;
-      const list = this.hideDone ? this.tasks.filter((t) => !t.completed && !t.cancelled) : this.tasks;
+      const src = this.calendarTasks;
+      const list = this.hideDone ? src.filter((t) => !t.completed && !t.cancelled) : src;
       for (const t of list) {
         if (!t.dueAt) continue;
         // 跨日期任务在跨度内每一天都计数；逆序/单日只计到期日，迷你日历才能正确打点
@@ -361,7 +373,15 @@ export default {
       // 待办侧栏注册表：任务落盘后父级可刷新所有已挂载面板的无日期缓存
       // （侧栏实例分布在 WeekDayView 与 TaskMonthView 内，$refs 直达不可靠）
       registerTodoPanel: (c) => { this._todoPanels.add(c); },
-      unregisterTodoPanel: (c) => { this._todoPanels.delete(c); }
+      unregisterTodoPanel: (c) => { this._todoPanels.delete(c); },
+      // 子任务动作（自用改版）：各视图里的子任务清单、进度小标、悬停浮层统一调用
+      dadaSub: {
+        toggle: (s) => this.toggleSub(s),
+        open: (s, e) => this.onTaskClick(s, e),
+        ctx: (s, e) => this.openCtx(s, e),
+        enter: (t, el) => this.subPopEnter(t, el),
+        leave: () => this.subPopLeave()
+      }
     };
   },
   created() {
@@ -430,6 +450,9 @@ export default {
       new VueModal(this.plugin.app, TaskEditorModal, {
         open: true,
         task,
+        // 从各视图点开的子任务（自用改版）：标题显示「编辑子任务」，并注明所属任务
+        isSubtask: !!(task && task.parentGuid),
+        parentTitle: (task && task.parentTitle) || '',
         defaultDate,
         defaultTime,
         defaultPriority,
@@ -495,8 +518,13 @@ export default {
       // （避免标题修改后选中被清空，面板看起来像没保存）
       const again = guid ? pool.find((t) => t.guid === guid) : null;
       this.selectedGuid = again ? again.guid : '';
+      // 子任务悬停浮层：换成重载后的同一条任务（勾选子任务后进度、清单即时更新）
+      if (this.subPop.task) {
+        const g = this.subPop.task.guid;
+        this.subPop = { task: this.calendarTasks.find((x) => x.guid === g) || null, rect: this.subPop.rect };
+      }
     },
-    switchView(v) { this.view = v; if (v === 'day') this.tlDayOffset = 0; this.persistTaskView(); },
+    switchView(v) { this.subPopClose(); this.view = v; if (v === 'day') this.tlDayOffset = 0; this.persistTaskView(); },
     // 视图菜单拖拽排序（菜单上直接拖 或 设置页列表拖）：dragKey 移动到 overKey 前/后，
     // 写回完整顺序（含隐藏项，保持其相对位置）并持久化
     async reorderMenu(dragKey, overKey) {
@@ -702,6 +730,7 @@ export default {
       if (e.target && e.target.tagName === 'A') e.stopPropagation();
     },
     onDragStart(t, e) {
+      this.subPopClose();
       this.dragGuid = t.guid;
       this.dragTask = t;
       // Option(⌥，Mac) / Ctrl(Windows·Linux) 拖拽 = 复制任务：落点新建副本，原任务不变
@@ -808,8 +837,33 @@ export default {
       try {
         await Tasks.toggleComplete(t.guid, done);
         t.completed = done; t.completedAt = done ? Date.now() : null;
+        // 子任务（含 ↳ 副本）：父任务的进度、另一处的同一条子任务都要跟着变，直接重载
+        if (t.parentGuid) await this.reload();
         this.maybeRefreshNoDate();
       } catch (e) { this.error = this.$t('app.opFail') + (e && e.message || e); }
+    },
+    /* ---------- 子任务（自用改版） ---------- */
+    toggleSub(s) { return this.toggle(s); },
+    // 鼠标进入带子任务的任务：稍等片刻再弹出浮层（已有浮层时直接切换），避免划过时闪烁
+    subPopEnter(t, el) {
+      if (!hasSubtasks(t) || this.dragGuid || !el || !el.getBoundingClientRect) return;
+      clearTimeout(this._subPopHide);
+      clearTimeout(this._subPopShow);
+      const show = () => { this.subPop = { task: t, rect: el.getBoundingClientRect() }; };
+      if (this.subPop.task) show();
+      else this._subPopShow = setTimeout(show, 350);
+    },
+    // 鼠标离开任务或浮层：稍等片刻再收起（给鼠标从任务移进浮层留出时间）
+    subPopLeave() {
+      clearTimeout(this._subPopShow);
+      clearTimeout(this._subPopHide);
+      this._subPopHide = setTimeout(() => { this.subPop = { task: null, rect: null }; }, 220);
+    },
+    subPopKeep() { clearTimeout(this._subPopHide); },
+    subPopClose() {
+      clearTimeout(this._subPopShow);
+      clearTimeout(this._subPopHide);
+      if (this.subPop.task) this.subPop = { task: null, rect: null };
     },
   }
 };
@@ -1052,3 +1106,4 @@ export default {
 
 <!-- 跨组件共享的样式原语（非 scoped，供各任务子组件与父容器共用） -->
 <style src="../components/tasks/tasks-shared.css"></style>
+<style src="../components/tasks/subtasks.css"></style>

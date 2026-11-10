@@ -31,14 +31,18 @@
               <div v-for="t in dayChips(c)" :key="t.guid" class="cel-task"
                    :class="{ done: t.completed || t.cancelled, dragging: ctx.dragGuid === t.guid, selected: selectedGuid === t.guid }"
                    :style="ctx.itemColor(t)"
-                   :title="ctx.dragHint(t)" :draggable="!resizing"
+                   :title="hasSubs(t) ? null : ctx.dragHint(t)" :draggable="!resizing"
                    @dragstart="ctx.onDragStart(t, $event)"
                    @dragend="ctx.onDragEnd"
                    @click.stop="onSelect(t, $event)" @dblclick.stop="ctx.onTaskClick(t, $event)"
-                   @contextmenu.prevent="ctx.openCtx(t, $event)">
+                   @contextmenu.prevent="ctx.openCtx(t, $event)"
+                   @mouseenter="subEnter(t, $event)" @mouseleave="subLeave">
                 <i class="tk-check" :class="[{ done: t.completed || t.cancelled }, ctx.statusIcon(t)]" @click.stop.prevent="ctx.toggle(t)"></i>
+                <span v-if="t.echo" class="tk-echo" v-tooltip="$t('app.echoTip', { name: t.parentTitle })">↳</span>
                 <span class="cel-task-sum" v-html="ctx.richSummaryNoTags(t)" @click="ctx.onRichClick"></span>
                 <span v-if="t.scheduledAt" class="tk-sched" v-tooltip="scheduledText(t)">{{ scheduledText(t) }}</span>
+                <!-- 子任务（自用改版）：只显示进度，鼠标停留时弹出清单 -->
+                <sub-progress v-if="hasSubs(t)" :task="t" />
                 <span v-if="ctx.taskTime(t)" class="cel-task-time">{{ ctx.taskTime(t) }}</span>
                 <!-- 单日全天：选中后首/尾出现拖动柄，可延伸为跨日期 -->
                 <div v-if="isChipSelected(t)" class="cel-span-h cel-span-h-l"
@@ -55,14 +59,17 @@
             <div v-for="b in w.bars" :key="b.t.guid" class="cel-bar"
                  :class="{ done: b.t.completed || b.t.cancelled, dragging: ctx.dragGuid === b.t.guid, selected: selectedGuid === b.t.guid, 'cont-start': b.contStart, 'cont-end': b.contEnd }"
                  :style="barStyle(b)"
-                 :title="ctx.dragHint(b.t)" :draggable="!resizing"
+                 :title="hasSubs(b.t) ? null : ctx.dragHint(b.t)" :draggable="!resizing"
                  @dragstart="ctx.onDragStart(b.t, $event)"
                  @dragend="ctx.onDragEnd"
                  @click.stop="onSelect(b.t, $event)" @dblclick.stop="ctx.onTaskClick(b.t, $event)"
-                 @contextmenu.prevent="ctx.openCtx(b.t, $event)">
+                 @contextmenu.prevent="ctx.openCtx(b.t, $event)"
+                 @mouseenter="subEnter(b.t, $event)" @mouseleave="subLeave">
               <i class="tk-check" :class="[{ done: b.t.completed || b.t.cancelled }, ctx.statusIcon(b.t)]" @click.stop.prevent="ctx.toggle(b.t)"></i>
+              <span v-if="b.t.echo" class="tk-echo" v-tooltip="$t('app.echoTip', { name: b.t.parentTitle })">↳</span>
               <span class="cel-task-sum" v-html="ctx.richSummaryNoTags(b.t)" @click="ctx.onRichClick"></span>
               <span v-if="b.t.scheduledAt" class="tk-sched" v-tooltip="scheduledText(b.t)">{{ scheduledText(b.t) }}</span>
+              <sub-progress v-if="hasSubs(b.t)" :task="b.t" />
               <!-- 跨日期条右侧小字：显示开始-结束日期区间（如 10/2-10/7） -->
               <span class="cel-bar-range">{{ ctx.spanRange(b.t) }}</span>
               <!-- 全天/跨日期条：选中后首/尾出现拖动柄（拖左柄改开始日、拖右柄改结束日，另一端不变） -->
@@ -90,6 +97,8 @@
 // 月视图：日历网格 + 左侧「待办」拖拽面板（面板与周视图共用，样式在 tasks-shared.css）。
 // 只读父级共享状态/方法（通过 ctx），自身只持有月网格计算。
 import TodoSidePanel from '../TodoSidePanel.vue';
+import SubProgress from './SubProgress.vue';
+import { hasSubtasks } from '../../composables/subtasks.js';
 import { getWeekStart, layoutSpanBars, spansDays, todayKey, scheduledText } from '../../composables/tasks-logic.js';
 
 const pad = (n) => (n < 10 ? '0' + n : '' + n);
@@ -97,7 +106,9 @@ function ymd(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + p
 
 export default {
   name: 'TaskMonthView',
-  components: { TodoSidePanel },
+  components: { TodoSidePanel, SubProgress },
+  // 子任务动作（TasksApp 提供）：悬停浮层的弹出 / 收起
+  inject: { dadaSub: { default: null } },
   props: {
     // 父组件实例（TasksApp），用于访问共享数据 / 方法与辅助函数
     ctx: { type: Object, required: true },
@@ -133,7 +144,9 @@ export default {
     // 跨日任务（开始日与到期日不同天，无论是否带具体时刻）——不落在单元格内，而由「横跨条」渲染
     spanTasks() {
       const ctx = this.ctx;
-      const list = ctx.visibleTasks ? ctx.visibleTasks(ctx.tasks || []) : (ctx.tasks || []);
+      // 日历类视图用带「↳ 副本」的任务表（自用改版）
+      const src = ctx.calendarTasks || ctx.tasks || [];
+      const list = ctx.visibleTasks ? ctx.visibleTasks(src) : src;
       return list.filter((t) => spansDays(t));
     },
     // 按周（每 7 个单元格）分组，并对每周做跨日任务的泳道排布
@@ -149,6 +162,10 @@ export default {
     }
   },
   methods: {
+    // 子任务（自用改版）：有没有子任务；鼠标停在带子任务的任务上时弹出 / 收起浮层
+    hasSubs(t) { return hasSubtasks(t); },
+    subEnter(t, e) { if (this.dadaSub) this.dadaSub.enter(t, e.currentTarget); },
+    subLeave() { if (this.dadaSub) this.dadaSub.leave(); },
     // ⏳ 计划日期徽标文本（issue #13，仅展示）
     scheduledText(t) { return scheduledText(t); },
     // 单元格内的「单日」任务（跨日任务由横跨条渲染，避免重复）

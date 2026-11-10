@@ -17,6 +17,8 @@
    ============================================================ */
 .task-app,
 .mylife-vue-modal,
+/* 子任务悬停浮层（自用改版）同样挂到 <body> */
+.tk-subpop,
 /* 右键菜单挂到 <body>（在 .task-app 之外），需在此声明令牌，否则 var(--paper)/--gold 等解析不到 */
 .tk-ctx {
   --gold: var(--interactive-accent);

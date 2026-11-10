@@ -39,11 +39,18 @@
             <i class="tk-ag-dot" :class="[t.cancelled ? 'la la-minus-circle' : (t.completed ? 'la la-check-circle' : 'la la-circle-o'), { done: t.completed || t.cancelled, cancel: t.cancelled }]"
                @click.stop.prevent="ctx.toggle(t)" :title="(t.completed || t.cancelled) ? $t('app.markUndone') : $t('app.markDone')"></i>
           </span>
-          <div class="tk-ag-card" :style="ctx.agendaCard(t)">
-            <span class="tk-ag-sum" :class="{ done: t.completed || t.cancelled, cancel: t.cancelled }" v-html="ctx.richSummaryNoTags(t)" @click="ctx.onRichClick"></span>
-            <span v-if="t.scheduledAt" class="tk-sched" v-tooltip="scheduledText(t)">{{ scheduledText(t) }}</span>
-            <!-- 跨日期任务右侧小字：显示开始-结束日期区间（如 10/2-10/7） -->
-            <span v-if="ctx.spanRange(t)" class="tk-ag-range">{{ ctx.spanRange(t) }}</span>
+          <div class="tk-ag-card" :class="{ 'has-subs': hasSubs(t) }" :style="ctx.agendaCard(t)">
+            <div class="tk-ag-card-top">
+              <!-- ↳：子任务在自己那天另放的一份（自用改版） -->
+              <span v-if="t.echo" class="tk-echo" v-tooltip="$t('app.echoTip', { name: t.parentTitle })">↳</span>
+              <span class="tk-ag-sum" :class="{ done: t.completed || t.cancelled, cancel: t.cancelled }" v-html="ctx.richSummaryNoTags(t)" @click="ctx.onRichClick"></span>
+              <span v-if="t.scheduledAt" class="tk-sched" v-tooltip="scheduledText(t)">{{ scheduledText(t) }}</span>
+              <!-- 跨日期任务右侧小字：显示开始-结束日期区间（如 10/2-10/7） -->
+              <span v-if="ctx.spanRange(t)" class="tk-ag-range">{{ ctx.spanRange(t) }}</span>
+              <sub-progress v-if="hasSubs(t)" :task="t" class="tk-ag-subprog" />
+            </div>
+            <!-- 子任务清单：放进父任务的卡片里 -->
+            <subtask-lines v-if="hasSubs(t)" :subtasks="t.subtasks" :hide-done="ctx.hideDone" />
           </div>
         </div>
       </div>
@@ -55,6 +62,9 @@
 </template>
 
 <script>
+import { hasSubtasks } from '../../composables/subtasks.js';
+import SubtaskLines from './SubtaskLines.vue';
+import SubProgress from './SubProgress.vue';
 // 日程视图：按日期顺序的纵向议程（已延期 → 今天起未来7天 → 更远）。
 // 只读父级共享状态/方法（通过 ctx），自身只持有分组计算。
 import { weekdayShort, scheduledText } from '../../composables/tasks-logic.js';
@@ -64,13 +74,16 @@ function ymd(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + p
 
 export default {
   name: 'TaskAgendaView',
+  components: { SubtaskLines, SubProgress },
   props: {
     ctx: { type: Object, required: true },
     plugin: { type: Object, default: null }
   },
   methods: {
     // ⏳ 计划日期徽标文本（issue #13，仅展示）
-    scheduledText(t) { return scheduledText(t); }
+    scheduledText(t) { return scheduledText(t); },
+    // 子任务（自用改版）：有没有子任务
+    hasSubs(t) { return hasSubtasks(t); }
   },
   computed: {
     // 日程视图分组：已延期 → 今天起未来 7 天（按天）→ 更远；无日期任务不进入
@@ -83,7 +96,8 @@ export default {
       const far = [];
       const dayMap = new Map();
       for (let i = 0; i < 7; i++) dayMap.set(ymd(new Date(today0 + i * day)), []);
-      for (const t of ctx.tasks) {
+      // 日历类视图用带「↳ 副本」的任务表（自用改版）
+      for (const t of ctx.calendarTasks) {
         if (!t.dueAt) continue;
         const sKey = (t.startAt && t.startAt !== t.dueAt) ? ymd(new Date(t.startAt)) : null;
         const eKey = ymd(new Date(t.dueAt));
@@ -203,7 +217,11 @@ export default {
 .tk-ag-dot:active { transform: scale(.9); }
 .tk-ag-dot.done { color: var(--c-done); }
 .tk-ag-dot.cancel { color: var(--c-cancel); }
-.tk-ag-card { display: flex; align-items: center; gap: 8px; margin: 10px 20px; padding: 20px 10px; border-radius: 10px; border-left: 3px solid var(--ag-bar, var(--line)); min-width: 0; transition: filter .15s ease; }
+.tk-ag-card { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 10px 20px; padding: 20px 10px; border-radius: 10px; border-left: 3px solid var(--ag-bar, var(--line)); min-width: 0; transition: filter .15s ease; }
+/* 卡片首行：标题、⏳、区间、子任务进度（自用改版：卡片改为上下两段，下面放子任务清单） */
+.tk-ag-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tk-ag-card.has-subs { padding-top: 14px; padding-bottom: 10px; }
+.tk-ag-subprog { margin-left: auto; }
 .tk-ag-card:hover { filter: brightness(.97); }
 .tk-ag-sum { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 /* 跨日期任务右侧小字：开始-结束日期区间（如 10/2-10/7），靠右、小号、低透明度 */

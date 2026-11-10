@@ -10,6 +10,7 @@ import {
 import {
   parseTasks, serializeBlock, collectLineNos, splitDescription, descPreview
 } from '../src/core/composables/tasks-logic.js';
+import { buildCalendarTasks, subProgress, visibleSubtasks } from '../src/core/composables/subtasks.js';
 import { makeVault } from './fake-vault.js';
 
 // ---------- 极简测试框架 ----------
@@ -254,6 +255,69 @@ test('在清单分组里新建任务时填的描述不再丢失', async () => {
   ok(v.read(LIST).endsWith('- [ ] 新任务\n\t说明一\n\t说明二'), '文件结尾不符: ' + JSON.stringify(v.read(LIST)));
   const g = body(await loadChecklistGroups(LIST_KEY));
   eq(g.groups[0].tasks.map((t) => [t.summary, t.description]), [['甲', ''], ['新任务', '说明一\n说明二']], '读回');
+});
+
+// ============================================================
+// 四、各视图显示子任务用到的数据
+// ============================================================
+
+const VIEW_SRC = HEAD_DAILY + [
+  '- [ ] 父任务 #财务',
+  '\t- [ ] 子一',
+  '\t- [x] 子二 ✅ 2026-05-26',
+  '\t- [-] 子三 ❌ 2026-05-26',
+  '\t- [ ] 子四 📅 2026-05-29',
+  '\t- [ ] 子五 📅 2026-05-27',
+  '- [ ] 没有子任务的任务',
+  ''
+].join('\n');
+
+test('读任务时，每条任务都带上它的直接子任务（含所属父任务的 guid 和标题）', async () => {
+  vaultWith({ [DAILY]: VIEW_SRC });
+  const items = body(await loadByDate('2026-05-27')).items;
+  eq(items.map((t) => [t.summary, (t.subtasks || []).length]), [['父任务 #财务', 5], ['没有子任务的任务', 0]], '任务与子任务数');
+  const p = items[0];
+  eq(p.subtasks.map((s) => s.summary), ['子一', '子二', '子三', '子四', '子五'], '子任务顺序');
+  eq(p.subtasks.every((s) => s.parentGuid === p.guid && s.parentTitle === '父任务'), true, '父任务信息');
+  eq(p.subtasks.map((s) => s.dueAt), [null, null, null, ms(2026, 5, 29), ms(2026, 5, 27)], '子任务各自的日期');
+});
+
+test('进度只算没取消的子任务；「隐藏已完成」时去掉已完成和已取消的', async () => {
+  vaultWith({ [DAILY]: VIEW_SRC });
+  const p = body(await loadByDate('2026-05-27')).items[0];
+  eq(subProgress(p), { done: 1, total: 4 }, '进度');
+  eq(visibleSubtasks(p, true).map((s) => s.summary), ['子一', '子四', '子五'], '隐藏已完成后');
+  eq(visibleSubtasks(p, false).length, 5, '不隐藏时');
+});
+
+test('日历用的任务表：只有日期落在父任务之外的子任务，才在自己那天另放一份 ↳ 副本', async () => {
+  vaultWith({ [DAILY]: VIEW_SRC, 'Inbox.md': HEAD_INBOX + '- [ ] 收件箱父任务\n\t- [ ] 有日期的子任务 📅 2026-06-01\n\t- [ ] 没日期的子任务\n' });
+  const all = body(await loadAll()).items;
+  const cal = buildCalendarTasks(all);
+  const echoes = cal.filter((t) => t.echo);
+  // 子四（5/29，父任务在 5/27）、收件箱里有日期的子任务（父任务无日期）→ 有副本；
+  // 子五（5/27，与父任务同一天）、没日期的子任务 → 没有
+  eq(echoes.map((t) => t.summary).sort(), ['子四', '有日期的子任务'], '副本');
+  eq(cal.length, all.length + 2, '总数 = 顶层任务 + 副本');
+  const e = echoes.find((t) => t.summary === '子四');
+  const orig = all[0].subtasks.find((s) => s.summary === '子四');
+  eq([e.guid === orig.guid, e.parentTitle, e !== orig], [true, '父任务', true], '副本与原子任务同一 guid、是另一个对象');
+});
+
+test('跨日期的父任务：子任务日期落在跨度之内就不另放副本', () => {
+  const parent = { guid: 'p', dueAt: ms(2026, 5, 30), startAt: ms(2026, 5, 26), dueAllDay: true, subtasks: [
+    { guid: 'a', dueAt: ms(2026, 5, 28), dueAllDay: true },
+    { guid: 'b', dueAt: ms(2026, 6, 2), dueAllDay: true }
+  ] };
+  eq(buildCalendarTasks([parent]).filter((t) => t.echo).map((t) => t.guid), ['b'], '副本');
+});
+
+test('在各视图里直接点开子任务：按 guid 能取到这条子任务的完整记录', async () => {
+  vaultWith({ [DAILY]: VIEW_SRC });
+  const sub = body(await loadByDate('2026-05-27')).items[0].subtasks[3];
+  const { Tasks } = await import('../src/core/composables/useTasks.js');
+  const got = await Tasks.getDetail(sub.guid);
+  eq([got && got.summary, got && got.parentTitle], ['子四', '父任务'], '取到的记录');
 });
 
 // ---------- 逐个运行并汇总 ----------

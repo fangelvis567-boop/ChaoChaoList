@@ -22,8 +22,9 @@
             <div v-if="grp.isOverdue" class="tk-postpone"
                  :title="$t('app.postponeAllTip')" @click.stop="ctx.openPostpone(grp.tasks)">{{ $t('app.postponeBtn') }}</div>
           </div>
-          <div v-for="t in grp.tasks" v-show="!isGroupCollapsed(q.key, grp.key)" :key="t.guid" class="tk-q-item"
-               :class="{ dragging: dragGuid === t.guid }"
+          <template v-for="t in grp.tasks" :key="t.guid">
+          <div v-show="!isGroupCollapsed(q.key, grp.key)" class="tk-q-item"
+               :class="{ dragging: dragGuid === t.guid, 'has-subs': hasSubs(t) && !isFolded(t) }"
                :style="{ '--q-color': q.color }"
                draggable="true" @dragstart="onDragStart(t, $event)" @dragend="clearDrag"
                @click="onTaskClick(t, $event)" @contextmenu.prevent="ctx.openCtx(t, $event)">
@@ -39,8 +40,17 @@
               <span v-if="grp.isOverdue" class="tk-q-date is-overdue">{{ dateText(t) }}</span>
               <span v-else-if="spanRange(t)" class="tk-q-range">{{ spanRange(t) }}</span>
               <span v-else-if="timeText(t)" class="tk-q-time">{{ timeText(t) }}</span>
+              <!-- 子任务（自用改版）：进度小标 + 折叠按钮 -->
+              <sub-progress v-if="hasSubs(t)" :task="t" />
+              <button v-if="hasSubs(t)" class="tk-subfold" :class="{ 'is-folded': isFolded(t) }" type="button"
+                      v-tooltip="isFolded(t) ? $t('app.subUnfold') : $t('app.subFold')" @click.stop="toggleFold(t)"><i class="la la-angle-down"></i></button>
             </div>
           </div>
+          <!-- 子任务清单：缩进显示在父任务下面，只跟着父任务走（不按自己的优先级分到别的象限） -->
+          <div v-if="hasSubs(t) && !isFolded(t)" v-show="!isGroupCollapsed(q.key, grp.key)" class="tk-q-subwrap">
+            <subtask-lines :subtasks="t.subtasks" :hide-done="hideDone" />
+          </div>
+          </template>
         </template>
       </div>
     </section>
@@ -48,6 +58,9 @@
 </template>
 
 <script>
+import { hasSubtasks, isSubFolded, toggleSubFold } from '../../composables/subtasks.js';
+import SubtaskLines from './SubtaskLines.vue';
+import SubProgress from './SubProgress.vue';
 import { Tasks } from '../../composables/useTasks.js';
 import { renderInlineHtml, dateText, timeText, statusIcon, priorityToLevel, levelToPriorityEmoji, weekdayShort, scheduledText } from '../../composables/tasks-logic.js';
 
@@ -68,6 +81,7 @@ function ymd(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + p
 
 export default {
   name: 'FourQuadrantView',
+  components: { SubtaskLines, SubProgress },
   props: {
     // TasksApp 实例：提供 tasks 数据与 toggle / onTaskClick / openCtx 等方法
     ctx: { type: Object, required: true },
@@ -109,6 +123,10 @@ export default {
     }
   },
   methods: {
+    // 子任务（自用改版）：有没有、是否折叠、切换折叠
+    hasSubs(t) { return hasSubtasks(t); },
+    isFolded(t) { return isSubFolded(t); },
+    toggleFold(t) { toggleSubFold(t); },
     // 象限内按日期分组：已过期（最上，红）→ 今天 → 明天 → 未来逐日 → 无日期；各组内按到期日升序
     groupTasks(tasks) {
       const day = 86400000;

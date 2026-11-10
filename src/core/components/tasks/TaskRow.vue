@@ -11,9 +11,15 @@
         </div>
       </div>
       <span v-if="task.scheduledAt" class="tk-sched" v-tooltip="scheduledText(task)">{{ scheduledText(task) }}</span>
+      <!-- 子任务（自用改版）：进度小标 + 折叠按钮 -->
+      <sub-progress v-if="hasSubs" :task="task" />
+      <button v-if="hasSubs" class="tk-subfold" :class="{ 'is-folded': folded }" type="button"
+              v-tooltip="folded ? $t('app.subUnfold') : $t('app.subFold')" @click.stop="toggleFold"><i class="la la-angle-down"></i></button>
       <span v-if="right" class="tk-date"><i class="tk-date-ico" :class="right.icon"></i>{{ right.text }}</span>
       <span v-else class="tk-date tk-ph">—</span>
     </div>
+    <!-- 子任务清单：缩进显示在父任务下面（默认展开，折叠状态记在本机） -->
+    <subtask-lines v-if="hasSubs && !folded" class="tk-row-subs" :subtasks="task.subtasks" />
   </div>
 </template>
 
@@ -21,9 +27,13 @@
 // 任务列表行（待办/已办分组共用）。
 // 纯展示组件：勾选 / 选中 / 编辑等动作全部上抛，由容器统一处理。
 import { statusIcon, dateText, timeText, richSummaryNoTags, priorityToLevel, scheduledText, tagChipStyle } from '../../composables/tasks-logic.js';
+import { hasSubtasks, isSubFolded, toggleSubFold } from '../../composables/subtasks.js';
+import SubtaskLines from './SubtaskLines.vue';
+import SubProgress from './SubProgress.vue';
 
 export default {
   name: 'TaskRow',
+  components: { SubtaskLines, SubProgress },
   props: {
     task: { type: Object, required: true },
     selected: { type: Boolean, default: false },
@@ -33,6 +43,9 @@ export default {
   computed: {
     // 优先级档位（用于列表行徽标配色）
     prioLevel() { return priorityToLevel(this.task.priority); },
+    // 子任务（自用改版）：有没有、是否折叠
+    hasSubs() { return hasSubtasks(this.task); },
+    folded() { return isSubFolded(this.task); },
     // 右侧日期/时间展示：根据分组模式返回图标与文案
     right() {
       const t = this.task;
@@ -48,6 +61,7 @@ export default {
   },
   methods: {
     statusIcon(t) { return statusIcon(t); },
+    toggleFold() { toggleSubFold(this.task); },
     dateText(t) { return dateText(t); },
     timeText(t) { return timeText(t); },
     // ⏳ 计划日期徽标文本（issue #13，仅展示）

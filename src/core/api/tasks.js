@@ -487,10 +487,20 @@ async function listTasks(opts = {}) {
     for (const node of doc.roots) {
       if (f.aggregateOnly && !node.due) continue;
       // 带上所属文件，确保同日期多文件下 guid 唯一、后续操作能定位到正确文件
-      items.push(recordOf(f.key, node, { file: f.path }));
+      items.push(withSubtasks(recordOf(f.key, node, { file: f.path }), node, f.key, f.path));
     }
   }
   return res(200, { ok: true, count: items.length, items });
+}
+
+// 给任务记录附上它的直接子任务（自用改版）：各视图据此在父任务下显示子任务清单。
+// 子任务记录带 parentGuid（父任务的 guid）和 parentTitle（父任务的纯文字标题），
+// 点开子任务时编辑窗口据此注明「属于：xxx」；更深层的子任务不展开，只体现在 subtaskCount 里
+function withSubtasks(rec, node, key, file) {
+  const parentTitle = splitSummary(rec.summary).title;
+  rec.subtasks = (node.children || []).map((c) =>
+    Object.assign(recordOf(key, c, { file, parentGuid: rec.guid }), { parentTitle }));
+  return rec;
 }
 
 // ---------- 便捷导出（useTasks 直接消费，签名对齐网页版 useTasks 的网络函数） ----------

@@ -35,17 +35,20 @@
            :class="{ today: col.key === todayKey, 'drop-target': dragOverKey === col.key }"></div>
       <!-- 横跨条：单日任务（1 列宽）与跨日任务（多列宽）共用同一套泳道 -->
       <div v-for="b in alldayBars" :key="b.t.guid" class="tk-tl-aditem"
-           :class="{ done: b.t.completed || b.t.cancelled, dragging: dragGuid === b.t.guid, selected: selectedGuid === b.t.guid, 'cont-start': b.contStart, 'cont-end': b.contEnd }"
+           :class="{ done: b.t.completed || b.t.cancelled, dragging: dragGuid === b.t.guid, selected: selectedGuid === b.t.guid, 'cont-start': b.contStart, 'cont-end': b.contEnd, 'has-sublist': showSubList(b.t) }"
            :style="alldayBarStyle(b)"
-           :draggable="!resizing" v-tooltip="helpers.dragHint(b.t)"
+           :draggable="!resizing" v-tooltip="subHover(b.t) ? '' : helpers.dragHint(b.t)"
            @dragstart="onAdDragStart(b.t, $event)" @dragend="handlers.dragEnd"
            @click.stop="onAdClick(b.t, $event)" @dblclick.stop="handlers.open(b.t, $event)"
-           @contextmenu.prevent="handlers.ctx(b.t, $event)">
+           @contextmenu.prevent="handlers.ctx(b.t, $event)"
+           @mouseenter="subEnter(b.t, $event)" @mouseleave="subLeave">
         <i class="tk-check" :class="[{ done: b.t.completed || b.t.cancelled }, helpers.statusIcon(b.t)]" @click.stop.prevent="handlers.toggle(b.t)"></i>
+        <span v-if="b.t.echo" class="tk-echo" v-tooltip="$t('app.echoTip', { name: b.t.parentTitle })">↳</span>
         <span class="tk-tl-sum" :class="{ done: b.t.completed || b.t.cancelled }" v-html="helpers.richSummaryNoTags(b.t)" @click="helpers.richClick"></span>
         <span v-if="b.t.scheduledAt" class="tk-sched" v-tooltip="helpers.scheduledText(b.t)">{{ helpers.scheduledText(b.t) }}</span>
         <!-- 跨日期横跨条右侧小字：显示开始-结束日期区间（如 10/2-10/7） -->
         <span v-if="spanRange(b.t)" class="tk-tl-adrange">{{ spanRange(b.t) }}</span>
+        <sub-progress v-if="hasSubs(b.t)" :task="b.t" />
         <!-- 跨日期横跨条：选中后首/尾出现拖动柄（拖左柄改开始日、拖右柄改结束日，另一端不变） -->
         <div v-if="isSpanSelected(b)" class="tk-tl-span-h tk-tl-span-h-l"
              :title="$t('app.spanMoveTip')"
@@ -53,6 +56,8 @@
         <div v-if="isSpanSelected(b)" class="tk-tl-span-h tk-tl-span-h-r"
              :title="$t('app.spanMoveTip')"
              @pointerdown.stop.prevent="onSpanResizeDown('end', b, $event)" @mousedown.stop.prevent @click.stop.prevent @dragstart.stop.prevent></div>
+        <!-- 日视图：子任务清单放进任务里（周视图列太窄，改为悬停弹出） -->
+        <subtask-lines v-if="showSubList(b.t)" :subtasks="b.t.subtasks" :hide-done="hideDone" compact />
       </div>
     </div>
 
@@ -64,17 +69,21 @@
         <div v-for="t in col.other" :key="t.guid" class="tk-tl-aditem tk-tl-other-item"
              :class="{ done: t.completed || t.cancelled, dragging: dragGuid === t.guid, selected: selectedGuid === t.guid }"
              :style="helpers.itemColor(t)"
-             :draggable="!resizing" v-tooltip="helpers.dragHint(t)"
+             :draggable="!resizing" v-tooltip="subHover(t) ? '' : helpers.dragHint(t)"
              @dragstart="handlers.dragStart(t, $event)" @dragend="handlers.dragEnd"
              @click.stop="onAdClick(t, $event)" @dblclick.stop="handlers.open(t, $event)"
-             @contextmenu.prevent="handlers.ctx(t, $event)">
+             @contextmenu.prevent="handlers.ctx(t, $event)"
+             @mouseenter="subEnter(t, $event)" @mouseleave="subLeave">
           <i class="tk-check" :class="[{ done: t.completed || t.cancelled }, helpers.statusIcon(t)]" @click.stop.prevent="handlers.toggle(t)"></i>
           <div class="tk-tl-other-body">
             <div class="tk-tl-sumrow">
+              <span v-if="t.echo" class="tk-echo" v-tooltip="$t('app.echoTip', { name: t.parentTitle })">↳</span>
               <span class="tk-tl-sum" :class="{ done: t.completed || t.cancelled }" v-html="helpers.richSummaryNoTags(t)" @click="helpers.richClick"></span>
               <span v-if="t.scheduledAt" class="tk-sched" v-tooltip="helpers.scheduledText(t)">{{ helpers.scheduledText(t) }}</span>
+              <sub-progress v-if="hasSubs(t)" :task="t" />
             </div>
             <span class="tk-tl-time">{{ helpers.timeText(t) }}</span>
+            <subtask-lines v-if="showSubList(t)" :subtasks="t.subtasks" :hide-done="hideDone" compact />
           </div>
         </div>
       </div>
@@ -99,20 +108,25 @@
         <div v-for="b in col.blocks" :key="b.t.guid" class="tk-tl-block"
              :class="{ done: b.t.completed || b.t.cancelled, dragging: dragGuid === b.t.guid, selected: selectedGuid === b.t.guid }"
              :style="helpers.blockStyle(b)"
-             :draggable="!resizing" v-tooltip="helpers.dragHint(b.t)"
+             :draggable="!resizing" v-tooltip="subHover(b.t) ? '' : helpers.dragHint(b.t)"
              @dragstart="onBlockDragStart(b.t, $event)" @dragend="handlers.dragEnd"
              @click.stop="onBlockClick(b.t, $event)" @dblclick.stop="handlers.open(b.t)"
-             @contextmenu.prevent="handlers.ctx(b.t, $event)">
+             @contextmenu.prevent="handlers.ctx(b.t, $event)"
+             @mouseenter="subEnter(b.t, $event)" @mouseleave="subLeave">
           <div class="tk-tl-rsz tk-tl-rsz-top" :title="$t('app.resizeStartTip')"
                @pointerdown.stop.prevent="onResizeDown('top', b, $event)" @mousedown.stop.prevent @click.stop.prevent
                @dragstart.stop.prevent></div>
           <div class="tk-tl-bc">
             <div class="tk-tl-bt">
               <i class="tk-check" :class="[{ done: b.t.completed || b.t.cancelled }, helpers.statusIcon(b.t)]" @click.stop.prevent="handlers.toggle(b.t)"></i>
+              <span v-if="b.t.echo" class="tk-echo" v-tooltip="$t('app.echoTip', { name: b.t.parentTitle })">↳</span>
               <span class="tk-tl-sum" :class="{ done: b.t.completed || b.t.cancelled }" v-html="helpers.richSummaryNoTags(b.t)" @click="helpers.richClick"></span>
               <span v-if="b.t.scheduledAt" class="tk-sched" v-tooltip="helpers.scheduledText(b.t)">{{ helpers.scheduledText(b.t) }}</span>
+              <sub-progress v-if="hasSubs(b.t)" :task="b.t" />
             </div>
             <span class="tk-tl-time" v-tooltip="$t('app.dblclickTimeTip')" @dblclick.stop="openTimePop(b, $event)">{{ helpers.timeText(b.t) }}</span>
+            <!-- 日视图：按块高放子任务清单，放不下的显示「还有 N 条」；一条都放不下时只留进度小标 -->
+            <subtask-lines v-if="blockSubMax(b) > 0" :subtasks="b.t.subtasks" :hide-done="hideDone" :max="blockSubMax(b)" compact />
           </div>
           <div class="tk-tl-rsz tk-tl-rsz-bot" :title="$t('app.resizeEndTip')"
                @pointerdown.stop.prevent="onResizeDown('bottom', b, $event)" @mousedown.stop.prevent @click.stop.prevent
@@ -139,14 +153,19 @@
 <script>
 import { layoutSpanBars, spansDays, spanDateText } from '../composables/tasks-logic.js';
 import TimePicker from './TimePicker.vue';
+import SubtaskLines from './tasks/SubtaskLines.vue';
+import SubProgress from './tasks/SubProgress.vue';
+import { hasSubtasks, visibleSubtasks } from '../composables/subtasks.js';
 // 时间轴范围（分钟）由父级经 props 传入（默认 00:00–24:00）；吸附步长见 props.snap（设置项 snapMinutes）
 // 单时间任务在时间轴上的绘制时长（分钟），与 WeekDayView.layoutBlocks 的 DEFAULT_MIN 一致
 const DEFAULT_MIN = 60;
 export default {
   name: 'TaskTimeline',
-  components: { TimePicker },
-  inject: ['plugin'],
+  components: { TimePicker, SubtaskLines, SubProgress },
+  inject: { plugin: 'plugin', dadaSub: { default: null } },
   props: {
+    // 「隐藏已完成」：子任务清单同样去掉已完成、已取消的（自用改版）
+    hideDone: { type: Boolean, default: false },
     cols: { type: Array, required: true },
     todayKey: { type: String, required: true },
     hourH: { type: Number, default: 48 },
@@ -205,6 +224,23 @@ export default {
     this.unbindTimePopClosers();
   },
   methods: {
+    /* ---------- 子任务（自用改版） ---------- */
+    hasSubs(t) { return hasSubtasks(t); },
+    // 周视图：带子任务的任务改为悬停弹出浮层（同时不再显示拖动提示，免得两个浮层叠在一起）
+    subHover(t) { return this.isWeek && hasSubtasks(t); },
+    subEnter(t, e) { if (this.subHover(t) && this.dadaSub) this.dadaSub.enter(t, e.currentTarget); },
+    subLeave() { if (this.isWeek && this.dadaSub) this.dadaSub.leave(); },
+    // 日视图：全天任务、其他时间任务里直接列出子任务
+    showSubList(t) { return !this.isWeek && visibleSubtasks(t, this.hideDone).length > 0; },
+    // 日视图的定时任务块：按块高（b.h，像素）算能放下几条；放不下全部时留一行给「还有 N 条」。
+    // 尺寸是在测试库里实测的：标题行 + 时间行 + 上下内边距约 50px，每条子任务约 19px
+    blockSubMax(b) {
+      if (this.isWeek) return 0;
+      const n = visibleSubtasks(b.t, this.hideDone).length;
+      if (!n) return 0;
+      const fit = Math.floor((b.h - 50) / 19);
+      return fit >= n ? n : Math.max(0, fit - 1);
+    },
     minOfDay(ms) {
       const d = new Date(ms);
       return d.getHours() * 60 + d.getMinutes();

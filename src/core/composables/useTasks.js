@@ -49,7 +49,10 @@ const api = {
   async loadByDate(dateKey) { return (await unwrap(loadByDate(dateKey))).items || []; },
   async getDetail(guid) {
     const items = await this.loadByDate(String(guid || '').split('#')[0]);
-    return items.find((t) => t.guid === guid) || null;
+    // 先找顶层任务，找不到再到各任务的子任务里找（自用改版：各视图里也能直接点开子任务）
+    return items.find((t) => t.guid === guid)
+      || items.reduce((all, t) => all.concat(t.subtasks || []), []).find((t) => t.guid === guid)
+      || null;
   },
   async createTask(task) { return (await unwrap(createTask(task))).task; },
   async createChecklistTask(listKey, groupTitle, task) {

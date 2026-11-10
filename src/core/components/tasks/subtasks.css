@@ -1,0 +1,106 @@
+/* ============================================================
+   子任务在各视图中的显示（自用改版）
+   全局样式（不 scoped）：悬停浮层挂在 <body> 下，不在 .task-app 里，
+   所以类名统一以 tk-subl / tk-subprog / tk-subfold / tk-echo / tk-subpop 开头，靠前缀限定范围。
+   ============================================================ */
+
+/* ---------- 子任务清单：左侧细引导线 + 小一号的圆圈和文字 ---------- */
+.tk-subl {
+  display: flex; flex-direction: column;
+  margin: 2px 0 4px 9px; padding-left: 12px;
+  border-left: 1px solid var(--line);
+  min-width: 0;
+}
+.tk-subl-row {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  padding: 3px 6px; margin-left: -6px; border-radius: 6px;
+  font-size: 13px; line-height: 1.45; color: var(--ink); cursor: pointer;
+}
+.tk-subl-row:hover { background: var(--background-modifier-hover); }
+.tk-subl-check {
+  flex: none; font-size: 15px; line-height: 1; color: var(--ink-soft); cursor: pointer;
+}
+.tk-subl-row.done .tk-subl-check { color: var(--gold); }
+.tk-subl-prio { flex: none; font-size: 11px; line-height: 1; }
+.tk-subl-sum { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tk-subl-row.done .tk-subl-sum { color: var(--done-color); text-decoration: line-through; }
+.tk-subl-meta {
+  flex: none; display: inline-flex; align-items: center; gap: 2px;
+  font-size: 11px; color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.tk-subl-meta i, i.tk-subl-meta { font-size: 12px; }
+.tk-subl-more { font-size: 11px; color: var(--ink-soft); padding: 1px 0 2px; }
+
+/* 紧凑排版：日视图的任务块、悬停浮层 */
+.tk-subl.is-compact { margin: 3px 0 1px 7px; padding-left: 9px; }
+.tk-subl.is-compact .tk-subl-row { padding: 1px 4px; margin-left: -4px; font-size: 12px; line-height: 1.4; }
+.tk-subl.is-compact .tk-subl-check { font-size: 13px; }
+
+/* ---------- 进度小标（如 1/3） ---------- */
+.tk-subprog {
+  flex: none; display: inline-flex; align-items: center; gap: 2px;
+  padding: 0 6px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink-soft);
+  font-size: 11px; line-height: 16px; font-weight: 400; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.tk-subprog i { font-size: 11px; }
+.tk-subprog.is-all-done { color: var(--gold); border-color: var(--gold); }
+
+/* ---------- 折叠 / 展开按钮（列表、四象限） ---------- */
+.tk-subfold {
+  flex: none; width: 20px; height: 20px; padding: 0; margin: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 5px; background: transparent; box-shadow: none;
+  color: var(--ink-soft); font-size: 13px; cursor: pointer;
+}
+.tk-subfold:hover { background: var(--background-modifier-hover); color: var(--ink); }
+.tk-subfold i { transition: transform .15s ease; }
+.tk-subfold.is-folded i { transform: rotate(-90deg); }
+
+/* ---------- ↳ 副本标记：子任务在自己那天另放的一份 ---------- */
+.tk-echo { flex: none; color: var(--ink-soft); font-size: 12px; line-height: 1; margin-right: 1px; }
+
+/* ---------- 悬停浮层（周视图、月视图） ---------- */
+.tk-subpop {
+  position: fixed; z-index: var(--layer-popover, 40); box-sizing: border-box; overflow-y: auto;
+  padding: 8px 10px 6px; border-radius: 10px;
+  background: var(--background-primary); border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--shadow-s, 0 4px 14px rgba(0, 0, 0, .12));
+}
+.tk-subpop-hd {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 4px; cursor: pointer;
+  font-size: 12px; color: var(--ink-soft);
+}
+.tk-subpop-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--ink); }
+.tk-subpop-hd:hover .tk-subpop-title { color: var(--gold); }
+
+/* ============================================================
+   各视图里的位置细节
+   ============================================================ */
+/* 列表：子任务清单对齐到父任务标题下方 */
+.task-app .tk-row-wrap .tk-row-subs { margin: -4px 0 6px 31px; }
+/* 四象限：父任务与它的子任务算一组，分隔虚线移到子任务清单下方 */
+.task-app .tk-q-item.has-subs { border-bottom: none; }
+.task-app .tk-q-subwrap { padding: 0 8px 6px 27px; border-bottom: 1px dashed var(--background-modifier-border); }
+.task-app .tk-q-subwrap .tk-subl { margin-top: 0; }
+.task-app .tk-q-meta .tk-subprog, .task-app .tk-q-meta .tk-subfold { align-self: center; }
+/* 日程：卡片里的子任务清单 */
+.task-app .tk-ag-card .tk-subl { margin-bottom: 0; }
+/* 月视图、周视图：进度小标做小、去掉边框，不挤占任务标题 */
+.task-app .cel-task .tk-subprog, .task-app .cel-bar .tk-subprog, .task-app .tk-tl-week .tk-subprog {
+  border: none; background: transparent; padding: 0 2px; font-size: 10px; line-height: 14px;
+  /* 空间不够时，进度小标比任务名先收缩（收缩权重远大于任务名），保证任务名能看到 */
+  flex-shrink: 50; min-width: 0; overflow: hidden;
+}
+.task-app .cel-task .tk-subprog i, .task-app .cel-bar .tk-subprog i, .task-app .tk-tl-week .tk-subprog i { font-size: 10px; }
+/* 日视图：全天区的泳道行高随内容增高（全天任务里会列出子任务） */
+.task-app .tk-tl:not(.tk-tl-week) .tk-tl-allday { grid-template-rows: repeat(var(--tl-lanes, 1), minmax(30px, auto)); }
+.task-app .tk-tl-aditem.has-sublist { flex-wrap: wrap; padding-bottom: 4px; }
+.task-app .tk-tl-aditem.has-sublist > .tk-subl { flex: 1 0 100%; }
+.task-app .tk-tl-block .tk-subl { margin-left: 6px; }
+/* 周视图里很窄的任务块（如同一时段并排的两个块）：宽度不到 100px 时干脆不显示进度小标，
+   免得被挤成几像素的残影；鼠标停留时照样弹出子任务浮层 */
+.task-app .tk-tl-week .tk-tl-block, .task-app .tk-tl-week .tk-tl-aditem { container-type: inline-size; }
+@container (max-width: 100px) {
+  .task-app .tk-tl-week .tk-subprog { display: none; }
+}

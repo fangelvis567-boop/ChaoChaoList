@@ -13,6 +13,7 @@
         :drag-guid="dragGuid"
         :helpers="tlHelpers"
         :handlers="tlHandlers"
+        :hide-done="hideDone"
         :is-week="view === 'four'" />
 
       <!-- 右侧待办池：默认展开，可拖到日历改期，也可把日历任务拖回（清除日期） -->
