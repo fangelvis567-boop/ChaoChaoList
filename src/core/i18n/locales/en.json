@@ -190,6 +190,7 @@
     "desc": "Description",
     "descPh": "Notes (optional)",
     "descMdHint": "Markdown supported — click the text to edit",
+    "descHintEmbed": "Markdown and editor hotkeys supported — paste or drop images and files",
     "descEditTip": "Click to edit",
     "date": "Date",
     "allDayHint": "All day (no specific time)",

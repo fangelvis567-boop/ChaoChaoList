@@ -41,6 +41,9 @@ export class VueModal extends Modal {
     // $t / provide('t') 必须在此单独注入，否则弹窗内 $t 不存在
     this.vueApp.config.globalProperties.$t = t;
     this.vueApp.provide('t', t);
+    // 把弹窗自身提供给组件（自用改版）：描述框里内嵌的 Obsidian 编辑器要用弹窗的按键范围，
+    // 才能做到「编辑时按 Esc 先退出编辑，再按一次关闭弹窗」
+    this.vueApp.provide('obsidianModal', this);
     this.vueApp.mount(host);
   }
 

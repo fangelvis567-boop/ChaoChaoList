@@ -32,7 +32,11 @@ if (!P.addClass) {
 // ---------- 用不到实际功能、只需要「存在」的几样 ----------
 export class Notice { constructor(msg) { console.log('[Notice]', msg); } }
 export class Setting {}
-export class Component { load() {} unload() {} }
+export class Component { load() {} unload() {} addChild(c) { return c; } }
+/** 运行平台：演示页当作桌面端 */
+export const Platform = { isMobile: false };
+/** 按键范围：演示页里没有内嵌编辑器（会退回普通文本框），这里只需要它存在 */
+export class Scope { constructor(parent) { this.parent = parent || null; } register() { return {}; } }
 /** 悬浮提示：演示页里简单地写进 aria-label 属性 */
 export function setTooltip(el, text) {
   if (text) el.setAttribute('aria-label', text);

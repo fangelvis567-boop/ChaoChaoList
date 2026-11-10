@@ -1,36 +1,41 @@
 <template>
-  <!-- 描述输入框（自用改版）：
-       平时显示排版后的 Markdown（.tk-md-view），点一下进入编辑（.tk-md-input，显示 Markdown 原文），
-       点别处恢复显示；没有内容时直接显示输入框和占位提示。 -->
-  <div class="tk-md" :class="{ 'is-editing': showEditor }">
-    <textarea
-      v-show="showEditor"
-      ref="ta"
-      class="tk-md-input"
-      rows="3"
-      :value="modelValue"
-      :placeholder="placeholder"
-      :disabled="disabled"
-      @focus="onFocus"
-      @blur="onBlur"
-      @input="onInput"
-      @keydown="onKeydown"
-    ></textarea>
-    <div
-      v-show="!showEditor"
-      ref="view"
-      class="tk-md-view markdown-rendered"
-      tabindex="0"
-      v-tooltip="editTip"
-      @click="onViewClick"
-      @keydown.enter.prevent="startEdit"
-    ></div>
+  <!-- 描述输入框（自用改版），两种形态：
+       1. 优先：内嵌 Obsidian 自带的编辑器（.tk-md-embed），实时预览、快捷键、粘贴图片都和写笔记一样；
+       2. 后备：内嵌失败时（如 Obsidian 升级改了内部结构）退回普通文本框——平时显示排版后的
+          Markdown（.tk-md-view），点一下进入编辑（.tk-md-input，显示原文），点别处恢复显示。 -->
+  <div class="tk-md" :class="{ 'is-editing': showEditor, 'is-embed': mode === 'embed' }">
+    <div v-show="mode !== 'plain'" ref="host" class="tk-md-embed"></div>
+    <template v-if="mode === 'plain'">
+      <textarea
+        v-show="showEditor"
+        ref="ta"
+        class="tk-md-input"
+        rows="3"
+        :value="modelValue"
+        :placeholder="placeholder"
+        :disabled="disabled"
+        @focus="onFocus"
+        @blur="onBlur"
+        @input="onInput"
+        @keydown="onKeydown"
+      ></textarea>
+      <div
+        v-show="!showEditor"
+        ref="view"
+        class="tk-md-view markdown-rendered"
+        tabindex="0"
+        v-tooltip="editTip"
+        @click="onViewClick"
+        @keydown.enter.prevent="startEdit"
+      ></div>
+    </template>
   </div>
 </template>
 
 <script>
 import { MarkdownRenderer, Component } from 'obsidian';
 import { isImeKey } from '../composables/tasks-logic.js';
+import { canEmbedEditor, createEmbeddedEditor } from '../ui/embeddedEditor.js';
 
 // 列表行的开头：缩进 + 标记（- * + 或 1. 1)）+ 空格 + 可选的复选框
 const LIST_RE = /^(\s*)([-*+]|\d+[.)])(\s+)(\[[ xX]\]\s+)?/;
@@ -46,14 +51,21 @@ export default {
     app: { type: Object, default: null },
     // 任务所在笔记的路径：解析双链、图片等相对引用时以它为起点
     sourcePath: { type: String, default: '' },
+    // 任务所在的笔记（TFile）：内嵌编辑器据此解析链接、保存粘贴的附件，S3 上传插件据此读取笔记设置
+    file: { type: Object, default: null },
     // 鼠标停在排版结果上时的提示文字
     editTip: { type: String, default: '' }
   },
-  emits: ['update:modelValue'],
+  // update:modelValue：内容变了；mode：告诉外层用的是哪种形态（'embed' 内嵌编辑器 / 'plain' 普通文本框）
+  emits: ['update:modelValue', 'mode'],
+  // 所在的 Obsidian 弹窗（由 VueModal 提供）：内嵌编辑器借它的按键范围，让 Esc 仍能关闭弹窗
+  inject: { obsidianModal: { default: null } },
   data() {
     return {
-      // 是否处于编辑状态（输入框获得焦点）
-      editing: false
+      // 是否处于编辑状态（仅普通文本框形态用：输入框获得焦点）
+      editing: false,
+      // 当前形态：'pending' 准备内嵌编辑器 / 'embed' 内嵌成功 / 'plain' 普通文本框
+      mode: canEmbedEditor(this.app) ? 'pending' : 'plain'
     };
   },
   computed: {
@@ -62,35 +74,31 @@ export default {
     showEditor() { return this.editing || !this.hasText; }
   },
   watch: {
-    modelValue() {
+    modelValue(v) {
+      if (this.mode === 'embed') {
+        // 外层改了内容（如重置表单）才需要同步进编辑器；编辑器自己发出的改动，内容本就一致
+        if (this._ed) this._ed.setValue(v || '');
+        return;
+      }
+      if (this.mode !== 'plain') return;
       if (this.showEditor) this.$nextTick(this.fit);
       else this.render();
     },
     showEditor(v) {
+      if (this.mode !== 'plain') return;
       if (v) this.$nextTick(this.fit);
       else this.render();
     }
   },
   mounted() {
-    // 记录鼠标 / 触摸是否正按着：见 onBlur 的说明
     this._doc = this.$el.ownerDocument;
-    this._onDown = () => { this._pointerDown = true; };
-    this._onUp = () => {
-      this._pointerDown = false;
-      if (this._exitOnUp) {
-        this._exitOnUp = false;
-        // 等这次点击的后续事件（click）都处理完，再切回显示状态
-        setTimeout(() => this.leaveIfBlurred(), 0);
-      }
-    };
-    this._doc.addEventListener('pointerdown', this._onDown, true);
-    this._doc.addEventListener('pointerup', this._onUp, true);
-    this._doc.addEventListener('pointercancel', this._onUp, true);
-    if (this.showEditor) this.fit();
-    else this.render();
+    if (this.mode === 'pending') this.initEmbed();
+    if (this.mode === 'plain') this.initPlain();
+    this.$emit('mode', this.mode);
   },
   beforeUnmount() {
-    if (this._doc) {
+    if (this._ed) { this._ed.destroy(); this._ed = null; }
+    if (this._onDown) {
       this._doc.removeEventListener('pointerdown', this._onDown, true);
       this._doc.removeEventListener('pointerup', this._onUp, true);
       this._doc.removeEventListener('pointercancel', this._onUp, true);
@@ -99,6 +107,44 @@ export default {
     if (this._renderComp) { this._renderComp.unload(); this._renderComp = null; }
   },
   methods: {
+    /* ---------- 形态一：内嵌 Obsidian 编辑器 ---------- */
+    initEmbed() {
+      try {
+        this._ed = createEmbeddedEditor(this.app, this.$refs.host, {
+          value: this.modelValue || '',
+          placeholder: this.placeholder,
+          file: this.file,
+          parentScope: this.obsidianModal ? this.obsidianModal.scope : null,
+          onChange: (v) => { if (v !== this.modelValue) this.$emit('update:modelValue', v); }
+        });
+        this.mode = 'embed';
+      } catch (e) {
+        // 内嵌失败（多半是 Obsidian 升级改了内部结构）：退回普通文本框，描述照样能写、能保存
+        console.warn('[dada-todo-list] 无法内嵌 Obsidian 编辑器，改用普通文本框:', e);
+        this._ed = null;
+        if (this.$refs.host) this.$refs.host.replaceChildren(); // 清掉可能建了一半的编辑器
+        this.mode = 'plain';
+      }
+    },
+
+    /* ---------- 形态二（后备）：普通文本框 + 排版结果 ---------- */
+    initPlain() {
+      // 记录鼠标 / 触摸是否正按着：见 onBlur 的说明
+      this._onDown = () => { this._pointerDown = true; };
+      this._onUp = () => {
+        this._pointerDown = false;
+        if (this._exitOnUp) {
+          this._exitOnUp = false;
+          // 等这次点击的后续事件（click）都处理完，再切回显示状态
+          setTimeout(() => this.leaveIfBlurred(), 0);
+        }
+      };
+      this._doc.addEventListener('pointerdown', this._onDown, true);
+      this._doc.addEventListener('pointerup', this._onUp, true);
+      this._doc.addEventListener('pointercancel', this._onUp, true);
+      // 文本框和排版结果是 v-if 渲染的，等它们出现在页面上再量高度 / 排版
+      this.$nextTick(() => { if (this.showEditor) this.fit(); else this.render(); });
+    },
     /* ---------- 显示状态：用 Obsidian 自己的渲染器排版 ---------- */
     async render() {
       const el = this.$refs.view;
@@ -286,6 +332,28 @@ export default {
 /* 不用 scoped：排版结果是 Obsidian 渲染器插进来的节点，scoped 样式管不到它们。
    类名统一以 tk-md 开头，不会影响别处。 */
 .tk-md { display: flex; flex-direction: column; min-width: 0; }
+
+/* ---------- 形态一：内嵌 Obsidian 编辑器 ----------
+   外框与其他输入框一致；默认约 3 行高，内容多了自动长高，到三分之一屏后在框内滚动。
+   Obsidian 编辑器原本是为整页笔记设计的（页边距、限制行宽、底部留白），这里统统收紧。 */
+.tk-md-embed {
+  --file-margins: 0;
+  --file-line-width: 100%;
+  box-sizing: border-box; min-height: 5.6em; max-height: 36vh; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+  padding: 6px 10px; font-size: 15px; line-height: 1.5; cursor: text;
+}
+.tk-md-embed:focus-within { border-color: var(--gold); }
+.tk-md-embed .markdown-source-view.mod-cm6 { height: auto; font-size: inherit; }
+.tk-md-embed .markdown-source-view.mod-cm6 .cm-editor { height: auto; }
+.tk-md-embed .markdown-source-view.mod-cm6 .cm-scroller { padding: 0; overflow: visible; }
+.tk-md-embed .markdown-source-view.mod-cm6 .cm-sizer {
+  max-width: none; margin: 0; padding: 0; min-height: 0;
+}
+.tk-md-embed .markdown-source-view.mod-cm6 .cm-content { padding: 0; min-height: 4.2em; }
+.tk-md-embed .markdown-source-view.mod-cm6 .cm-line { padding-left: 0; padding-right: 0; }
+.tk-md-embed .cm-gutters, .tk-md-embed .inline-title, .tk-md-embed .embedded-backlinks { display: none; }
+.tk-md-embed .cm-placeholder { color: var(--text-faint); }
 
 /* 输入框：默认 3 行高（由 rows 决定），不让手动拖拽改高度（高度由 fit() 跟随内容调整） */
 .tk-md textarea.tk-md-input {

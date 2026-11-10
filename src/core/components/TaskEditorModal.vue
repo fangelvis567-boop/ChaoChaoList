@@ -58,9 +58,10 @@
       <!-- 描述（自用改版）：平时显示排版后的 Markdown，点击进入编辑。
            外层用 div 而不是 label：label 会把点击转交给里面的输入框，干扰「点排版结果进入编辑」 -->
       <div class="tk-field">
-        <span>{{ $t('editor.desc') }}<em class="tk-field-hint">{{ $t('editor.descMdHint') }}</em></span>
+        <span>{{ $t('editor.desc') }}<em class="tk-field-hint">{{ descMode === 'embed' ? $t('editor.descHintEmbed') : $t('editor.descMdHint') }}</em></span>
         <markdown-field v-model="form.description" :app="plugin ? plugin.app : null" :source-path="sourcePath"
-                        :placeholder="$t('editor.descPh')" :edit-tip="$t('editor.descEditTip')" :disabled="saving" />
+                        :file="contextFile" :placeholder="$t('editor.descPh')" :edit-tip="$t('editor.descEditTip')"
+                        :disabled="saving" @mode="descMode = $event" />
       </div>
       <!-- 时间形态：单时间 / 时间段 / 全天 / 跨日期；各形态仅展示所需字段 -->
       <div class="tk-time-block">
@@ -166,8 +167,9 @@
 </template>
 
 <script>
+import { TFile } from 'obsidian';
 import { Tasks } from '../composables/useTasks.js';
-import { splitSummary, composeSummary, sanitizeTag, isImeKey, PRIORITY_ICON, priorityToLevel, levelToPriorityEmoji, withAlpha, validHex } from '../composables/tasks-logic.js';
+import { splitSummary, composeSummary, sanitizeTag, isImeKey, PRIORITY_ICON, priorityToLevel, levelToPriorityEmoji, withAlpha, validHex, INBOX_KEY } from '../composables/tasks-logic.js';
 import { LinkFormModal, ConfirmModal } from '../ui/modals.js';
 import { openTaskInFile } from '../utils/openTaskInFile.js';
 import { taskFilePath } from '../api/tasks.js';
@@ -213,7 +215,9 @@ export default {
       tagSugs: [],
       sugList: [],
       sugIdx: -1,
-      sugOpen: false
+      sugOpen: false,
+      // 描述框的形态（由 MarkdownField 告知）：'embed' 内嵌 Obsidian 编辑器 / 'plain' 普通文本框
+      descMode: ''
     };
   },
   computed: {
@@ -233,6 +237,27 @@ export default {
       const t = this.task;
       if (!t || !t.guid) return '';
       return t.file || taskFilePath(t.date) || '';
+    },
+    // 描述框所属的笔记（TFile）：内嵌编辑器解析链接、保存粘贴的附件、S3 上传插件读取笔记设置，都以它为准。
+    // 编辑已有任务 = 任务所在的笔记；新建任务还没落盘，按它将要写入的位置依次找一篇已存在的笔记
+    // （清单文件 → 当天日记 → 收件箱），都不存在时为 null（此时编辑器照常可用，只是没有所属笔记）
+    contextFile() {
+      const app = this.plugin && this.plugin.app;
+      if (!app) return null;
+      const byPath = (p) => {
+        const f = p ? app.vault.getAbstractFileByPath(p) : null;
+        return f instanceof TFile ? f : null;
+      };
+      if (this.sourcePath) return byPath(this.sourcePath);
+      const keys = [];
+      if (this.createIn && this.createIn.list) keys.push(this.createIn.list);
+      if (this.defaultDate) keys.push(this.defaultDate);
+      keys.push(INBOX_KEY);
+      for (const k of keys) {
+        const f = byPath(taskFilePath(k));
+        if (f) return f;
+      }
+      return null;
     },
     // 优先级四档（高 / 中 / 低 / 无，从左到右），图标取自 obsidian-tasks 风格；默认「无」
     priorityOptions() {

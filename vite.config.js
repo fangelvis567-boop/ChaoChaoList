@@ -71,7 +71,9 @@ export default defineConfig({
       fileName: () => 'main.js'
     },
     rollupOptions: {
-      external: ['obsidian', 'electron', '@electron/remote'],
+      // @codemirror/*：Obsidian 运行时自带（内嵌编辑器要用），必须用它那一份，不能再打包一份进来，
+      // 否则两份 CodeMirror 的扩展互不认识，编辑器会报「Unrecognized extension value」
+      external: ['obsidian', 'electron', '@electron/remote', '@codemirror/state', '@codemirror/view'],
       output: {
         // 手机端 webview 无 process 全局时的兜底（仅不存在时注入）
         banner: `try{if(typeof process==='undefined'){globalThis.process={env:{NODE_ENV:${JSON.stringify(isDev ? 'development' : 'production')}}};}}catch(e){}`,

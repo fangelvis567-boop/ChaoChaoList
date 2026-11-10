@@ -190,6 +190,7 @@
     "desc": "描述",
     "descPh": "補充說明（可選）",
     "descMdHint": "支援 Markdown，點擊文字即可編輯",
+    "descHintEmbed": "支援 Markdown 和編輯快捷鍵，可直接貼上或拖入圖片、檔案",
     "descEditTip": "點擊編輯",
     "date": "日期",
     "allDayHint": "全天（不指定具體時間）",

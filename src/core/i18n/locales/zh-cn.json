@@ -190,6 +190,7 @@
     "desc": "描述",
     "descPh": "补充说明（可选）",
     "descMdHint": "支持 Markdown，点击文字即可编辑",
+    "descHintEmbed": "支持 Markdown 和编辑快捷键，可直接粘贴或拖入图片、文件",
     "descEditTip": "点击编辑",
     "date": "日期",
     "allDayHint": "全天（不指定具体时间）",
