@@ -63,13 +63,14 @@
                         :file="contextFile" :placeholder="$t('editor.descPh')" :edit-tip="$t('editor.descEditTip')"
                         :disabled="saving" @mode="descMode = $event" />
       </div>
-      <!-- 时间形态：单时间 / 时间段 / 全天 / 跨日期；各形态仅展示所需字段 -->
+      <!-- 时间形态：单时间 / 时间段 / 全天 / 跨日期 / 无日期；各形态仅展示所需字段 -->
       <div class="tk-time-block">
         <div class="tk-tm-tabs">
           <button type="button" class="tk-tm-tab" :class="{ active: form.timeMode === 'single' }" @click="setTimeMode('single')">{{ $t('editor.timeSingle') }}</button>
           <button type="button" class="tk-tm-tab" :class="{ active: form.timeMode === 'range' }" @click="setTimeMode('range')">{{ $t('editor.timeRange') }}</button>
           <button type="button" class="tk-tm-tab" :class="{ active: form.timeMode === 'allday' }" @click="setTimeMode('allday')">{{ $t('app.allDay') }}</button>
           <button type="button" class="tk-tm-tab" :class="{ active: form.timeMode === 'crossdate' }" @click="setTimeMode('crossdate')">{{ $t('editor.crossDate') }}</button>
+          <button type="button" class="tk-tm-tab" :class="{ active: form.timeMode === 'none' }" @click="setTimeMode('none')">{{ $t('editor.noDate') }}</button>
         </div>
 
         <!-- 单时间：日期 + 时间 -->
@@ -115,6 +116,9 @@
             <DatePicker v-model="form.dueDate" :disabled="saving" @change="ensureDefaultTimes" />
           </label>
         </template>
+
+        <!-- 无日期（自用改版）：不设日期和时间；用一行字说明保存后这条任务去哪 -->
+        <div v-else-if="form.timeMode === 'none'" class="tk-nodate-hint">{{ noDateHint }}</div>
       </div>
       <!-- 计划日期（⏳ scheduled）：设置「启用计划时间」开启时显示（issue #13） -->
       <label v-if="showScheduled" class="tk-field">
@@ -232,6 +236,18 @@ export default {
       return !!(st && st.showScheduled === true);
     },
     isCrossDate() { return this.form.timeMode === 'crossdate'; },
+    // 无日期（自用改版）：保存时不带日期和时间
+    isNoDate() { return this.form.timeMode === 'none'; },
+    // 「无日期」下的提示：说明保存后这条任务去哪。
+    // 日记里的主任务，日期就是日记的文件名，去掉日期 = 搬到收件箱；
+    // 收件箱、清单里的任务和子任务，日期写在行内，去掉后任务留在原处。
+    noDateHint() {
+      if (!this.editing) return this.$t(this.createIn ? 'editor.noDateNewList' : 'editor.noDateNewInbox');
+      const key = String(this.task.date || '');
+      const isSub = this.isSubtask || !!this.task.parentGuid;
+      if (!isSub && /^\d{4}-\d{2}-\d{2}$/.test(key)) return this.$t('editor.noDateFromDaily', { date: key });
+      return this.$t('editor.noDateKeep');
+    },
     // 任务所在笔记的路径：渲染描述里的双链、图片时以它为起点（新建任务还没有所在笔记，留空）
     sourcePath() {
       const t = this.task;
@@ -278,7 +294,8 @@ export default {
       return {
         guid: '', title: '', description: '', links: [], tags: [],
         dueDate: this.defaultDate || '', dueTime: this.defaultTime || '',
-        timeMode: 'single', dueStart: this.defaultTime || '', dueEnd: '', startDate: '',
+        // 没有预设日期的新任务（收件箱、清单里新建）默认停在「无日期」（自用改版）
+        timeMode: this.defaultDate ? 'single' : 'none', dueStart: this.defaultTime || '', dueEnd: '', startDate: '',
         scheduledDate: '',
         remind: true, completed: false, cancelled: false, cancelledAt: '',
         priority: this.defaultPriority || 'none'
@@ -326,6 +343,8 @@ export default {
         dueStart = t.time;
         if (t.timeEnd) { timeMode = 'range'; dueEnd = t.timeEnd; }
       }
+      // 既没有日期也没有时间：打开时停在「无日期」（自用改版）
+      if (!sd && !t.time) timeMode = 'none';
       const parts = splitSummary(t.summary);
       return {
         guid: t.guid,
@@ -375,7 +394,7 @@ export default {
     },
     // 未指定时间时，按模式带出默认值（单时间→下一个半点；时间段→开始为下一个半点、结束+30 分）
     ensureDefaultTimes() {
-      if (this.isAllDay) return;
+      if (this.isAllDay || this.isNoDate) return;
       if (this.form.timeMode === 'crossdate') {
         if (!this.form.startDate) this.form.startDate = this.form.dueDate || '';
         return;
@@ -394,11 +413,17 @@ export default {
     // 全天 / 单时间 / 时间段 切换：同一单选项，切换时按模式补默认值
     setTimeMode(mode) {
       if (this.form.timeMode === mode) return;
+      // 从「无日期」切到要日期的形态、而日期还空着时，先填上今天（或当前视图的那一天），
+      // 免得不选日期就保存、又存成一条没日期的任务（自用改版）。
+      // 原来就有日期的任务切到「无日期」时，表单里的日期并不清空，没保存之前切回来日期还在。
+      if (this.form.timeMode === 'none' && !this.form.dueDate) this.form.dueDate = this.defaultDate || ymd(new Date());
       this.form.timeMode = mode;
       this.ensureDefaultTimes();
     },
     // 构造时间戳：单时间只给开始；时间段额外给结束；全天只给当日 00:00
     buildDueAt() {
+      // 无日期（自用改版）：日期、结束时间、开始日一律清空
+      if (this.isNoDate) return { dueAt: null, dueEndAt: null, startAt: '' };
       if (!this.form.dueDate) return { dueAt: null, dueEndAt: null };
       const date = this.form.dueDate;
       if (this.isAllDay) return { dueAt: new Date(date + 'T00:00:00').getTime(), dueEndAt: null };
@@ -444,7 +469,8 @@ export default {
         dueAt,
         dueEndAt,
         startAt,
-        dueAllDay: this.isAllDay || this.isCrossDate,
+        // 无日期也按「全天」传：数据层据此把行首的时间（如「09:00」）一并去掉
+        dueAllDay: this.isAllDay || this.isCrossDate || this.isNoDate,
         priority: levelToPriorityEmoji(this.form.priority),
         // 计划日期（⏳）：仅在「启用计划时间」时随 payload 传出（未传 = 数据层保持不动）
         ...(this.showScheduled ? { scheduledDate: this.form.scheduledDate || '' } : {})
@@ -652,6 +678,8 @@ export default {
 }
 .tk-tm-tab:hover { color: var(--ink); }
 .tk-tm-tab.active { background: var(--panel); color: var(--gold); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+/* 「无日期」下的说明文字（自用改版） */
+.tk-nodate-hint { font-size: 13px; line-height: 1.5; color: var(--ink-soft); padding: 2px 2px 0; }
 /* 时间输入行：原生 date/time 选择器，对齐 .tk-field 表单原语 */
 .tk-time-row { display: flex; align-items: center; gap: 8px; }
 .tk-time-row input {

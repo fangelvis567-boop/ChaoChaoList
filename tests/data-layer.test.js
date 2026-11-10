@@ -226,6 +226,34 @@ test('回归：日记里的主任务改日期，仍然整块搬到那一天的�
   eq([sub.summary, sub.description, sub.dueAt], ['子', '子说明', ms(2026, 6, 1)], '搬过去后读回的子任务');
 });
 
+// 编辑窗口选「无日期」保存时传给数据层的日期字段（与 TaskEditorModal 的 buildDueAt / save 一致）
+const NO_DATE = { dueAt: null, dueEndAt: null, startAt: '', dueAllDay: true };
+
+test('编辑窗口选「无日期」：日记里的主任务整块搬到收件箱（描述、子任务一起走），行首时间一并去掉', async () => {
+  const src = HEAD_DAILY + '- [ ] 10:00 写周报 🔼\n\t周报说明\n\t- [ ] 子 📅 2026-06-01\n- [ ] 其他\n';
+  const v = vaultWith({ [DAILY]: src });
+  const t = body(await loadByDate('2026-05-27')).items.find((x) => x.summary === '写周报');
+  eq([t.dueAt, t.time], [ms(2026, 5, 27, 10, 0), '10:00'], '改之前：日期来自日记文件名，时间写在行首');
+  body(await updateTask(t.guid, NO_DATE));
+  eq(v.read(DAILY), HEAD_DAILY + '- [ ] 其他\n', '原日记只剩另一条任务');
+  ok(v.read('Inbox.md').includes('- [ ] 写周报 🔼\n\t周报说明\n\t- [ ] 子 📅 2026-06-01'),
+    '收件箱里的整块不符: ' + JSON.stringify(v.read('Inbox.md')));
+  const moved = body(await loadAll()).items.find((x) => x.summary === '写周报');
+  eq([moved.date, moved.dueAt, moved.time || '', moved.description, moved.subtaskCount],
+    ['inbox', null, '', '周报说明', 1], '搬到收件箱后读回的任务');
+});
+
+test('编辑窗口选「无日期」：收件箱里的任务去掉行内日期和行首时间，仍留在收件箱', async () => {
+  const INBOX = 'Inbox.md';
+  const src = HEAD_INBOX + '- [ ] 09:00 买书 📅 2026-06-03\n- [ ] 其他\n';
+  const v = vaultWith({ [INBOX]: src });
+  const t = body(await loadAll()).items.find((x) => x.summary === '买书');
+  eq([t.date, t.dueAt], ['inbox', ms(2026, 6, 3, 9, 0)], '改之前：收件箱里的任务带日期和时间');
+  body(await updateTask(t.guid, NO_DATE));
+  eq(v.read(INBOX), HEAD_INBOX + '- [ ] 买书\n- [ ] 其他\n', '收件箱文件内容');
+  eq(v.paths(), [INBOX], '没有新建别的文件');
+});
+
 // ============================================================
 // 三、清单视图
 // ============================================================
