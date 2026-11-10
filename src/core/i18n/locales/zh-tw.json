@@ -128,7 +128,7 @@
     "subProgressTip": "子任務完成 {{done}}/{{total}}",
     "subFold": "收起子任務",
     "subUnfold": "展開子任務",
-    "echoTip": "子任務，屬於：{{name}}",
+    "echoTip": "子任務，屬於：{{name}}（點 ↳ 打開父任務）",
     "moveFail": "移動失敗：",
     "clSideEmpty": "還沒有清單<br />在筆記 frontmatter 的 tags 中加入 todoList 標記即可",
     "clPickSide": "從左側選擇一個清單查看",

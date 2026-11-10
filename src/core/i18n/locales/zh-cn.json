@@ -128,7 +128,7 @@
     "subProgressTip": "子任务完成 {{done}}/{{total}}",
     "subFold": "收起子任务",
     "subUnfold": "展开子任务",
-    "echoTip": "子任务，属于：{{name}}",
+    "echoTip": "子任务，属于：{{name}}（点 ↳ 打开父任务）",
     "moveFail": "移动失败：",
     "clSideEmpty": "还没有清单<br />在笔记 frontmatter 的 tags 中加入 todoList 标记即可",
     "clPickSide": "从左侧选择一个清单查看",

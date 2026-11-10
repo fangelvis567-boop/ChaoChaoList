@@ -378,6 +378,7 @@ export default {
       dadaSub: {
         toggle: (s) => this.toggleSub(s),
         open: (s, e) => this.onTaskClick(s, e),
+        openParent: (s, e) => this.openParentOf(s, e),
         ctx: (s, e) => this.openCtx(s, e),
         enter: (t, el) => this.subPopEnter(t, el),
         leave: () => this.subPopLeave()
@@ -844,6 +845,16 @@ export default {
     },
     /* ---------- 子任务（自用改版） ---------- */
     toggleSub(s) { return this.toggle(s); },
+    // 点 ↳ 副本前面的「↳」：打开它的父任务（按住 Ctrl/⌘ 点则跳到父任务在笔记里的位置）
+    async openParentOf(s, e) {
+      if (!s || !s.parentGuid) return;
+      const parent = this.tasks.find((x) => x.guid === s.parentGuid);
+      if (parent) { this.onTaskClick(parent, e); return; }
+      try {
+        const full = await Tasks.getDetail(s.parentGuid);
+        if (full) this.onTaskClick(full, e);
+      } catch (err) { /* 父任务找不到（如刚被删）：什么也不做 */ }
+    },
     // 鼠标进入带子任务的任务：稍等片刻再弹出浮层（已有浮层时直接切换），避免划过时闪烁
     subPopEnter(t, el) {
       if (!hasSubtasks(t) || this.dragGuid || !el || !el.getBoundingClientRect) return;

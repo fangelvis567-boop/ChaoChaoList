@@ -42,7 +42,8 @@
           <div class="tk-ag-card" :class="{ 'has-subs': hasSubs(t) }" :style="ctx.agendaCard(t)">
             <div class="tk-ag-card-top">
               <!-- ↳：子任务在自己那天另放的一份（自用改版） -->
-              <span v-if="t.echo" class="tk-echo" v-tooltip="$t('app.echoTip', { name: t.parentTitle })">↳</span>
+              <span v-if="t.echo" class="tk-echo" role="button" v-tooltip="$t('app.echoTip', { name: t.parentTitle })"
+                    @click.stop="ctx.openParentOf(t, $event)" @dblclick.stop>↳</span>
               <span class="tk-ag-sum" :class="{ done: t.completed || t.cancelled, cancel: t.cancelled }" v-html="ctx.richSummaryNoTags(t)" @click="ctx.onRichClick"></span>
               <span v-if="t.scheduledAt" class="tk-sched" v-tooltip="scheduledText(t)">{{ scheduledText(t) }}</span>
               <!-- 跨日期任务右侧小字：显示开始-结束日期区间（如 10/2-10/7） -->

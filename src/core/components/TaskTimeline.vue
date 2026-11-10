@@ -43,7 +43,8 @@
            @contextmenu.prevent="handlers.ctx(b.t, $event)"
            @mouseenter="subEnter(b.t, $event)" @mouseleave="subLeave">
         <i class="tk-check" :class="[{ done: b.t.completed || b.t.cancelled }, helpers.statusIcon(b.t)]" @click.stop.prevent="handlers.toggle(b.t)"></i>
-        <span v-if="b.t.echo" class="tk-echo" v-tooltip="$t('app.echoTip', { name: b.t.parentTitle })">↳</span>
+        <span v-if="b.t.echo" class="tk-echo" role="button" v-tooltip="$t('app.echoTip', { name: b.t.parentTitle })"
+                    @click.stop="openParent(b.t, $event)" @dblclick.stop>↳</span>
         <span class="tk-tl-sum" :class="{ done: b.t.completed || b.t.cancelled }" v-html="helpers.richSummaryNoTags(b.t)" @click="helpers.richClick"></span>
         <span v-if="b.t.scheduledAt" class="tk-sched" v-tooltip="helpers.scheduledText(b.t)">{{ helpers.scheduledText(b.t) }}</span>
         <!-- 跨日期横跨条右侧小字：显示开始-结束日期区间（如 10/2-10/7） -->
@@ -77,7 +78,8 @@
           <i class="tk-check" :class="[{ done: t.completed || t.cancelled }, helpers.statusIcon(t)]" @click.stop.prevent="handlers.toggle(t)"></i>
           <div class="tk-tl-other-body">
             <div class="tk-tl-sumrow">
-              <span v-if="t.echo" class="tk-echo" v-tooltip="$t('app.echoTip', { name: t.parentTitle })">↳</span>
+              <span v-if="t.echo" class="tk-echo" role="button" v-tooltip="$t('app.echoTip', { name: t.parentTitle })"
+                    @click.stop="openParent(t, $event)" @dblclick.stop>↳</span>
               <span class="tk-tl-sum" :class="{ done: t.completed || t.cancelled }" v-html="helpers.richSummaryNoTags(t)" @click="helpers.richClick"></span>
               <span v-if="t.scheduledAt" class="tk-sched" v-tooltip="helpers.scheduledText(t)">{{ helpers.scheduledText(t) }}</span>
               <sub-progress v-if="hasSubs(t)" :task="t" />
@@ -119,7 +121,8 @@
           <div class="tk-tl-bc">
             <div class="tk-tl-bt">
               <i class="tk-check" :class="[{ done: b.t.completed || b.t.cancelled }, helpers.statusIcon(b.t)]" @click.stop.prevent="handlers.toggle(b.t)"></i>
-              <span v-if="b.t.echo" class="tk-echo" v-tooltip="$t('app.echoTip', { name: b.t.parentTitle })">↳</span>
+              <span v-if="b.t.echo" class="tk-echo" role="button" v-tooltip="$t('app.echoTip', { name: b.t.parentTitle })"
+                    @click.stop="openParent(b.t, $event)" @dblclick.stop>↳</span>
               <span class="tk-tl-sum" :class="{ done: b.t.completed || b.t.cancelled }" v-html="helpers.richSummaryNoTags(b.t)" @click="helpers.richClick"></span>
               <span v-if="b.t.scheduledAt" class="tk-sched" v-tooltip="helpers.scheduledText(b.t)">{{ helpers.scheduledText(b.t) }}</span>
               <sub-progress v-if="hasSubs(b.t)" :task="b.t" />
@@ -226,6 +229,8 @@ export default {
   methods: {
     /* ---------- 子任务（自用改版） ---------- */
     hasSubs(t) { return hasSubtasks(t); },
+    // 点「↳」：打开父任务
+    openParent(t, e) { if (this.dadaSub) this.dadaSub.openParent(t, e); },
     // 周视图：带子任务的任务改为悬停弹出浮层（同时不再显示拖动提示，免得两个浮层叠在一起）
     subHover(t) { return this.isWeek && hasSubtasks(t); },
     subEnter(t, e) { if (this.subHover(t) && this.dadaSub) this.dadaSub.enter(t, e.currentTarget); },

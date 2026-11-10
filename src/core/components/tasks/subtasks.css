@@ -58,7 +58,12 @@
 .tk-subfold.is-folded i { transform: rotate(-90deg); }
 
 /* ---------- ↳ 副本标记：子任务在自己那天另放的一份 ---------- */
-.tk-echo { flex: none; color: var(--ink-soft); font-size: 12px; line-height: 1; margin-right: 1px; }
+.tk-echo {
+  flex: none; color: var(--ink-soft); font-size: 12px; line-height: 1;
+  padding: 2px 3px; margin: -2px 0 -2px -3px; border-radius: 4px; cursor: pointer;
+}
+/* 点「↳」打开父任务：悬停时变成强调色，提示可点 */
+.tk-echo:hover { color: var(--gold); background: var(--background-modifier-hover); }
 
 /* ---------- 悬停浮层（周视图、月视图） ---------- */
 .tk-subpop {

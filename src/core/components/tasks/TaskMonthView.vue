@@ -38,7 +38,8 @@
                    @contextmenu.prevent="ctx.openCtx(t, $event)"
                    @mouseenter="subEnter(t, $event)" @mouseleave="subLeave">
                 <i class="tk-check" :class="[{ done: t.completed || t.cancelled }, ctx.statusIcon(t)]" @click.stop.prevent="ctx.toggle(t)"></i>
-                <span v-if="t.echo" class="tk-echo" v-tooltip="$t('app.echoTip', { name: t.parentTitle })">↳</span>
+                <span v-if="t.echo" class="tk-echo" role="button" v-tooltip="$t('app.echoTip', { name: t.parentTitle })"
+                    @click.stop="ctx.openParentOf(t, $event)" @dblclick.stop>↳</span>
                 <span class="cel-task-sum" v-html="ctx.richSummaryNoTags(t)" @click="ctx.onRichClick"></span>
                 <span v-if="t.scheduledAt" class="tk-sched" v-tooltip="scheduledText(t)">{{ scheduledText(t) }}</span>
                 <!-- 子任务（自用改版）：只显示进度，鼠标停留时弹出清单 -->
@@ -66,7 +67,8 @@
                  @contextmenu.prevent="ctx.openCtx(b.t, $event)"
                  @mouseenter="subEnter(b.t, $event)" @mouseleave="subLeave">
               <i class="tk-check" :class="[{ done: b.t.completed || b.t.cancelled }, ctx.statusIcon(b.t)]" @click.stop.prevent="ctx.toggle(b.t)"></i>
-              <span v-if="b.t.echo" class="tk-echo" v-tooltip="$t('app.echoTip', { name: b.t.parentTitle })">↳</span>
+              <span v-if="b.t.echo" class="tk-echo" role="button" v-tooltip="$t('app.echoTip', { name: b.t.parentTitle })"
+                    @click.stop="ctx.openParentOf(b.t, $event)" @dblclick.stop>↳</span>
               <span class="cel-task-sum" v-html="ctx.richSummaryNoTags(b.t)" @click="ctx.onRichClick"></span>
               <span v-if="b.t.scheduledAt" class="tk-sched" v-tooltip="scheduledText(b.t)">{{ scheduledText(b.t) }}</span>
               <sub-progress v-if="hasSubs(b.t)" :task="b.t" />

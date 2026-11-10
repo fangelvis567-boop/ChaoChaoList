@@ -128,7 +128,7 @@
     "subProgressTip": "Subtasks done: {{done}}/{{total}}",
     "subFold": "Collapse subtasks",
     "subUnfold": "Expand subtasks",
-    "echoTip": "Subtask of: {{name}}",
+    "echoTip": "Subtask of: {{name}} (click ↳ to open it)",
     "moveFail": "Failed to move: ",
     "clSideEmpty": "No checklists yet<br />Add the todoList tag to a note's frontmatter to create one",
     "clPickSide": "Pick a checklist from the left",
