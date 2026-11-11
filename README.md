@@ -1,4 +1,4 @@
-# Dada Todo List
+# ChaoChaoList
 
 > A task & checklist manager for Obsidian, built entirely on plain Markdown checkboxes. Your tasks live in your own notes — daily notes, an inbox note, and checklist files. No account, no cloud, no lock-in.
 
@@ -6,7 +6,7 @@
 
 ---
 
-**Dada Todo List** turns your Obsidian vault into a full-featured task and checklist manager — powered entirely by plain Markdown checkboxes (`- [ ]` / `- [x]`). No accounts, no cloud services, no proprietary database: your tasks are simply lines in your own notes, and the plugin brings them together with calendar, timeline and agenda views plus a polished editing experience.
+**ChaoChaoList** turns your Obsidian vault into a full-featured task and checklist manager — powered entirely by plain Markdown checkboxes (`- [ ]` / `- [x]`). No accounts, no cloud services, no proprietary database: your tasks are simply lines in your own notes, and the plugin brings them together with calendar, timeline and agenda views plus a polished editing experience.
 
 ### Who is it for?
 
@@ -16,7 +16,7 @@
 ### Quick start
 
 1. Enable the core **Daily notes** plugin (Settings → Core plugins) so dated tasks land in your daily notes;
-2. Click the ✅ icon in the left ribbon (or run the command "Open Dada Todo List") to open the panel;
+2. Click the ✅ icon in the left ribbon (or run the command "Open ChaoChaoList") to open the panel;
 3. Write a line `- [ ] Buy milk #life` in any daily note — it shows up in the panel instantly.
 
 ### Highlights
@@ -108,20 +108,6 @@ tags:
 ### Language
 
 The interface follows Obsidian's language setting (English / 简体中文). Restart Obsidian after switching.
-
----
-
-## 💖 Support the author
-
-If this plugin helps you, feel free to buy me a coffee — it keeps me motivated to keep improving it~ You can also find me on [Xiaohongshu](https://xhslink.cn/o/2G9OTVU76WP) for tips and updates.
-
-WeChat Pay
-
-<img src="docs/donate-wechat.jpg" alt="WeChat donation QR" width="300">
-
-Alipay
-
-<img src="docs/donate-alipay.jpg" alt="Alipay donation QR" width="300">
 
 ---
 
