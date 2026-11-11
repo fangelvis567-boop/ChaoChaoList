@@ -145,7 +145,7 @@ cmp -s manifest.json "$BUILD_DIR/manifest.json" || fail "构建目录里的 mani
 # ---------- 5. 提交版本号、打标签、推送 ----------
 if [ "$NEW" != "$CUR" ]; then
   git add manifest.json package.json package-lock.json versions.json
-  git commit -q -m "chore: 发布 $NEW" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+  git commit -q -m "chore: 发布 $NEW"   # 用户要求：提交里不加 Claude 共同作者
   git push -q origin main
 fi
 git tag "$NEW"
