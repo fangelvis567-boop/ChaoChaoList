@@ -159,9 +159,9 @@
     "listDone": "Completed",
     "listCancelled": "Cancelled",
     "listTasks": "Tasks",
-    "openDada": "Open Dada Todo List",
+    "openDada": "Open ChaoChaoList",
     "newTask": "New task",
-    "viewTitle": "Dada Todo List",
+    "viewTitle": "ChaoChaoList",
     "clProgressPct": "{{done}} / {{total}} completed · {{pct}}%",
     "toggleDone": "Toggle completion",
     "viewInCal": "View in completion calendar",
@@ -230,7 +230,7 @@
     "prioHigh": "High"
   },
   "remind": {
-    "title": "Dada Todo Reminder",
+    "title": "ChaoChaoList Reminder",
     "body": "{{title}} · {{time}}",
     "allDay": "All day",
     "missed": "Missed {{time}}",
@@ -238,7 +238,7 @@
     "testFallback": "System notification not sent, reason: {{reason}}. Fell back to an in-app notice. See the devtools console for details."
   },
   "settings": {
-    "title": "Dada Todo List Settings",
+    "title": "ChaoChaoList Settings",
     "openLocation": "Open location",
     "openLocationDesc": "Where the panel opens. Changes apply immediately.",
     "locLeft": "Left sidebar",
@@ -343,7 +343,7 @@
     "communityPage": "Community page",
     "pluginHomepage": "Plugin homepage",
     "feedbackTitle": "Feedback",
-    "feedbackDesc": "If you run into issues, {issue} or message the author on Xiaohongshu.",
+    "feedbackDesc": "If you run into issues, {issue}.",
     "feedbackLink": "Open a GitHub Issue",
     "rebuildIndex": "Rebuild index",
     "rebuildIndexDesc": "Rescan daily notes, inbox and checklist files to rebuild the task index. The time it takes depends on the number of task files — please wait patiently. Use this when view data no longer matches file contents.",

@@ -159,9 +159,9 @@
     "listDone": "已完成",
     "listCancelled": "已取消",
     "listTasks": "任務",
-    "openDada": "開啟達達清單",
+    "openDada": "開啟 ChaoChaoList",
     "newTask": "新建任務",
-    "viewTitle": "達達清單",
+    "viewTitle": "ChaoChaoList",
     "clProgressPct": "{{done}} / {{total}} 已完成 · {{pct}}%",
     "toggleDone": "切換完成狀態",
     "viewInCal": "在完成日曆中查看",
@@ -169,7 +169,7 @@
     "calDayCount": "{{day}} · 完成 {{n}} 項",
     "calDayEmpty": "當日無完成項",
     "calTitle": "{{name}} · 清單完成日曆",
-    "onboardTitle": "開始使用 Dada Todo List",
+    "onboardTitle": "開始使用 ChaoChaoList",
     "onboardDesc": "面板裡還沒有任務。在每日筆記裡寫下一行 - [ ] 待辦事項，或在設定中指定收件箱檔案，即可開始。",
     "onboardOpenSettings": "開啟設定",
     "onboardDismiss": "知道了",
@@ -230,7 +230,7 @@
     "prioHigh": "高"
   },
   "remind": {
-    "title": "達達清單提醒",
+    "title": "ChaoChaoList 提醒",
     "body": "{{title}} · {{time}}",
     "allDay": "全天",
     "missed": "錯過 {{time}} 的提醒",
@@ -238,7 +238,7 @@
     "testFallback": "系統通知未發出，原因：{{reason}}，已改用應用內提示。詳情見開發者工具主控台日誌。"
   },
   "settings": {
-    "title": "達達清單 Dada Todo List",
+    "title": "ChaoChaoList",
     "openLocation": "開啟位置",
     "openLocationDesc": "面板開啟的區域，修改後立即生效。",
     "locLeft": "左側區域",

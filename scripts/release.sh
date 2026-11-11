@@ -25,7 +25,7 @@
 # =============================================================================
 set -euo pipefail
 
-REPO_SLUG="fangelvis567-boop/dada-todo-list-mod"   # GitHub 上的私有仓库
+REPO_SLUG="fangelvis567-boop/ChaoChaoList"         # GitHub 上的私有仓库（2026-11-11 由 dada-todo-list-mod 改名）
 BUILD_DIR="dada-todo-list"                         # 构建产物目录（vite.config.js 里的 OUT_DIR）
 DRY_RUN=0
 WANT_VERSION=""

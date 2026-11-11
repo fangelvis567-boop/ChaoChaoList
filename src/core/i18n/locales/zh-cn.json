@@ -159,9 +159,9 @@
     "listDone": "已完成",
     "listCancelled": "已取消",
     "listTasks": "任务",
-    "openDada": "打开达达清单",
+    "openDada": "打开 ChaoChaoList",
     "newTask": "新建任务",
-    "viewTitle": "达达清单",
+    "viewTitle": "ChaoChaoList",
     "clProgressPct": "{{done}} / {{total}} 已完成 · {{pct}}%",
     "toggleDone": "切换完成状态",
     "viewInCal": "在完成日历中查看",
@@ -169,7 +169,7 @@
     "calDayCount": "{{day}} · 完成 {{n}} 项",
     "calDayEmpty": "当日无完成项",
     "calTitle": "{{name}} · 清单完成日历",
-    "onboardTitle": "开始使用 Dada Todo List",
+    "onboardTitle": "开始使用 ChaoChaoList",
     "onboardDesc": "面板里还没有任务。在每日笔记里写下一行 - [ ] 待办事项，或在设置中指定收件箱文件，即可开始。",
     "onboardOpenSettings": "打开设置",
     "onboardDismiss": "知道了",
@@ -230,7 +230,7 @@
     "prioHigh": "高"
   },
   "remind": {
-    "title": "达达清单提醒",
+    "title": "ChaoChaoList 提醒",
     "body": "{{title}} · {{time}}",
     "allDay": "全天",
     "missed": "错过 {{time}} 的提醒",
@@ -238,7 +238,7 @@
     "testFallback": "系统通知未发出，原因：{{reason}}，已改用应用内提示。详情见开发者工具控制台日志。"
   },
   "settings": {
-    "title": "达达清单 Dada Todo List",
+    "title": "ChaoChaoList",
     "openLocation": "打开位置",
     "openLocationDesc": "面板打开的区域，修改后立即生效。",
     "locLeft": "左侧区域",
@@ -343,7 +343,7 @@
     "communityPage": "社区页面",
     "pluginHomepage": "插件首页",
     "feedbackTitle": "问题反馈",
-    "feedbackDesc": "使用中遇到问题，{issue}，或通过小红书私信联系作者。",
+    "feedbackDesc": "使用中遇到问题，{issue}。",
     "feedbackLink": "在 GitHub 提交 Issue",
     "rebuildIndex": "重建索引",
     "rebuildIndexDesc": "重新扫描日记、收件箱与清单文件并重建任务索引。耗时取决于任务文件数量，请耐心等待；当视图数据与文件内容不一致时可使用。",

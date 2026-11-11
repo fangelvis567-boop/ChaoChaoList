@@ -495,12 +495,15 @@ export class DadaTodoSettingTab extends PluginSettingTab {
     ]);
 
     // 分组：关于（软件信息 / 作者 / 反馈渠道）
-    const GH_REPO = 'https://github.com/sishen0112/obsidian-DadaTodoList';
+    // 自用改版（ChaoChaoList）：插件首页、更新日志、问题反馈都指向用户自己的仓库。
+    // 插件 id 仍是 dada-todo-list，官方市场里这个 id 的页面是原作者的，所以「插件首页」不再链过去；
+    // 原作者 Plover 的版权声明保留在仓库的 LICENSE 文件里。
+    const GH_REPO = 'https://github.com/fangelvis567-boop/ChaoChaoList';
     const GH_ISSUES = GH_REPO + '/issues';
-    // 作者小红书主页：用户提供链接后填入此处；留空则不显示小红书按钮
-    const XIAOHONGSHU_URL = 'https://xhslink.cn/o/2G9OTVU76WP';
+    // 小红书按钮：留空则不显示
+    const XIAOHONGSHU_URL = '';
     // 关于：三条标准 setting 行（左侧 name/desc，右侧 版本标签 / 链接按钮），布局参照 EasySync 的关于。
-    const COMMUNITY_URL = 'https://community.obsidian.md/plugins/' + plugin.manifest.id;
+    const HOMEPAGE_URL = GH_REPO;
 
     // 右侧链接按钮：图标 + 文字，点击新窗打开
     const aboutButton = (parent, icon, label, url) => {
@@ -520,8 +523,7 @@ export class DadaTodoSettingTab extends PluginSettingTab {
         desc: '',
         render: safe((s) => {
           s.setName(plugin.manifest.name);
-          // 左侧说明区（自用改版）：不再自检新版，只显示一句固定说明
-          s.descEl.createSpan({ cls: 'dt-about-update-status', text: T('customBuild') });
+          // 左侧说明区（自用改版）：不再自检新版，也不显示说明文字（用户的选择）
           // 右侧控件：当前版本号 + 更新日志按钮
           const row = s.controlEl.createDiv('dt-about-links');
           row.createSpan({ text: T('version') + ' ' + (plugin.manifest.version || ''), cls: 'dt-about-version-tag' });
@@ -537,7 +539,7 @@ export class DadaTodoSettingTab extends PluginSettingTab {
           s.setName(T('author'));
           s.setDesc(plugin.manifest.author || '');
           const links = s.controlEl.createDiv('dt-about-links');
-          aboutButton(links, 'home', T('pluginHomepage'), COMMUNITY_URL);
+          aboutButton(links, 'home', T('pluginHomepage'), HOMEPAGE_URL);
           aboutButton(links, 'github', T('github'), plugin.manifest.authorUrl || GH_REPO);
           if (XIAOHONGSHU_URL) aboutButton(links, 'book', T('xiaohongshu'), XIAOHONGSHU_URL);
         }),

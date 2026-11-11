@@ -56,7 +56,7 @@ function reload(plugin, plugins) {
   plugins.disablePlugin(id);
   plugins.enablePlugin(id);
 
-  new Notice('Dada Todo List 已热更新', 1500);
+  new Notice('ChaoChaoList 已热更新', 1500);
   // 重载会 detach 视图，顺带把面板重新打开
   const fresh = plugins.plugins[id];
   if (fresh && typeof fresh.activateView === 'function') fresh.activateView();
