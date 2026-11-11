@@ -27,19 +27,19 @@ function laWoff2Only() {
 // ============================================================================
 // Dada Todo · Obsidian 插件构建（库模式）
 // ----------------------------------------------------------------------------
-// 产物写入 dada-todo-list/（目录名即插件 id，可直接整目录部署）：
+// 产物写入 chaochao-list/（目录名即插件 id，可直接整目录部署；2026-11-11 前 id 为 dada-todo-list）：
 // main.js（CJS，Obsidian 要求）+ styles.css（Obsidian 自动注入）
 //      + manifest.json（Obsidian 要求与 main.js 同目录，故构建后自动拷贝）。
 // external：obsidian / electron 由 Obsidian 宿主提供，不打包。
 //
 // 部署：测试库插件目录软链到本目录产物文件夹
-//   ~/Documents/myLife_dev/.obsidian/plugins/dada-todo-list
-//     -> /Users/plover/Documents/Projects/DadaTodo-Plugin/dada-todo-list
+//   ~/Developer/dada-test-vault/.obsidian/plugins/chaochao-list
+//     -> ~/Developer/dada-todo-list-mod/chaochao-list
 // 开发循环：npm run dev 触发 watch 构建，Obsidian 重载社区插件即可生效。
 // ============================================================================
 
 const root = dirname(fileURLToPath(import.meta.url));
-const OUT_DIR = 'dada-todo-list';
+const OUT_DIR = 'chaochao-list';
 const isDev = process.env.DADA_DEV === '1';
 
 /** 构建后把 manifest.json 拷进产物目录（软链方式接库时产物必须自带 manifest） */
@@ -61,7 +61,7 @@ export default defineConfig({
   },
   build: {
     outDir: OUT_DIR,
-    // 任何模式都不清空产物目录：dada-todo-list/ 被测试库软链为插件目录，
+    // 任何模式都不清空产物目录：chaochao-list/ 被测试库软链为插件目录，
     // Obsidian 把运行时配置 data.json 写在这里，清空会删掉用户的标签颜色等全部设置
     // （产物文件名固定为 main.js/styles.css/manifest.json，无残留哈希文件风险）
     emptyOutDir: false,

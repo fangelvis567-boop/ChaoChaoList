@@ -120,7 +120,7 @@ export default {
         this.mode = 'embed';
       } catch (e) {
         // 内嵌失败（多半是 Obsidian 升级改了内部结构）：退回普通文本框，描述照样能写、能保存
-        console.warn('[dada-todo-list] 无法内嵌 Obsidian 编辑器，改用普通文本框:', e);
+        console.warn('[ChaoChaoList] 无法内嵌 Obsidian 编辑器，改用普通文本框:', e);
         this._ed = null;
         if (this.$refs.host) this.$refs.host.replaceChildren(); // 清掉可能建了一半的编辑器
         this.mode = 'plain';
@@ -168,7 +168,7 @@ export default {
         }
       } catch (e) {
         // 渲染失败不影响使用：退回显示纯文本
-        console.warn('[dada-todo-list] 描述渲染失败，改为显示原文:', e);
+        console.warn('[ChaoChaoList] 描述渲染失败，改为显示原文:', e);
         holder.textContent = text;
       }
       if (seq !== this._renderSeq) {

@@ -584,7 +584,7 @@ export default {
         if (!this.addingTag) return; // 期间输入框已关闭
         this.tagSugs = Array.isArray(list) ? list : [];
         this.refreshSugs();
-      } catch (e) { console.warn('[dada-todo-list] collectTags failed:', e); }
+      } catch (e) { console.warn('[ChaoChaoList] collectTags failed:', e); }
     },
     // 按当前草稿过滤历史标签：包含匹配；排除本任务已添加的；空草稿 = 展示频次最高的前 8 个
     refreshSugs() {

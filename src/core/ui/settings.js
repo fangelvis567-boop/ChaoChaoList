@@ -496,7 +496,7 @@ export class DadaTodoSettingTab extends PluginSettingTab {
 
     // 分组：关于（软件信息 / 作者 / 反馈渠道）
     // 自用改版（ChaoChaoList）：插件首页、更新日志、问题反馈都指向用户自己的仓库。
-    // 插件 id 仍是 dada-todo-list，官方市场里这个 id 的页面是原作者的，所以「插件首页」不再链过去；
+    // 插件 id 已改为 chaochao-list（不在官方市场里），所以「插件首页」指向自己的仓库；
     // 原作者 Plover 的版权声明保留在仓库的 LICENSE 文件里。
     const GH_REPO = 'https://github.com/fangelvis567-boop/ChaoChaoList';
     const GH_ISSUES = GH_REPO + '/issues';

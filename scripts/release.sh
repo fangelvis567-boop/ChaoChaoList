@@ -13,7 +13,7 @@
 #   写（只在正式发布时）：
 #     1. 需要换版本号时：改上面四个文件里的版本号，提交一次「chore: 发布 x.y.z」并推送 main
 #     2. 运行 node tests/run.mjs（测试）和 npm run build（构建）。
-#        构建产物写进 dada-todo-list/ 目录——测试库的 Dada 插件目录软链到这里，会一起变成新版
+#        构建产物写进 chaochao-list/ 目录——测试库的插件目录软链到这里，会一起变成新版
 #     3. 打标签 x.y.z 并推送到 GitHub
 #     4. 在 GitHub 私有仓库里创建发布版本 x.y.z，附上 main.js、manifest.json、styles.css
 #   不碰：任何 Obsidian 库。主库要装新版，仍按原来的流程：先备份插件目录，再复制这三个文件
@@ -26,7 +26,7 @@
 set -euo pipefail
 
 REPO_SLUG="fangelvis567-boop/ChaoChaoList"         # GitHub 上的私有仓库（2026-11-11 由 dada-todo-list-mod 改名）
-BUILD_DIR="dada-todo-list"                         # 构建产物目录（vite.config.js 里的 OUT_DIR）
+BUILD_DIR="chaochao-list"                          # 构建产物目录（vite.config.js 里的 OUT_DIR，与插件 id 一致）
 DRY_RUN=0
 WANT_VERSION=""
 

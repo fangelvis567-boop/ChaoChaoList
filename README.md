@@ -36,7 +36,7 @@
 ### Installation
 
 **Manual**: download `main.js`, `styles.css` and `manifest.json` into
-`your-vault/.obsidian/plugins/dada-todo-list/`, then enable the plugin in Settings → Community plugins.
+`your-vault/.obsidian/plugins/chaochao-list/`, then enable the plugin in Settings → Community plugins.
 
 **BRAT**: install [BRAT](https://github.com/TfTHacker/obsidian42-brat) and add this repository.
 
@@ -115,14 +115,14 @@ The interface follows Obsidian's language setting (English / 简体中文). Rest
 
 ```bash
 npm install
-npm run build     # production build (outputs: dada-todo-list/main.js, styles.css, manifest.json)
+npm run build     # production build (outputs: chaochao-list/main.js, styles.css, manifest.json)
 npm run dev       # dev mode: rebuild automatically on src/ changes
 ```
 
 Local debugging: symlink your test vault's plugin folder to the build output (folder name must match the plugin id):
 
 ```bash
-ln -s "$(pwd)/dada-todo-list" "your-vault/.obsidian/plugins/dada-todo-list"
+ln -s "$(pwd)/chaochao-list" "your-vault/.obsidian/plugins/chaochao-list"
 ```
 
 ## 📄 License

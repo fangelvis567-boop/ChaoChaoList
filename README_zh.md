@@ -71,7 +71,7 @@
 ### 🚀 安装
 
 **手动安装**：下载 `main.js`、`styles.css`、`manifest.json` 三个文件，放入
-`你的库/.obsidian/plugins/dada-todo-list/` 目录，然后在设置中启用第三方插件并开启本插件。
+`你的库/.obsidian/plugins/chaochao-list/` 目录，然后在设置中启用第三方插件并开启本插件。
 
 **BRAT**：安装 [BRAT](https://github.com/TfTHacker/obsidian42-brat) 后添加本仓库地址即可自动更新。
 
@@ -144,14 +144,14 @@ tags:
 
 ```bash
 npm install
-npm run build     # 生产构建（产物：dada-todo-list/main.js、styles.css、manifest.json）
+npm run build     # 生产构建（产物：chaochao-list/main.js、styles.css、manifest.json）
 npm run dev       # 开发模式：监听 src/ 改动自动重建
 ```
 
 本地调试：把测试库的插件目录软链到产物目录即可（目录名与插件 id 一致）：
 
 ```bash
-ln -s "$(pwd)/dada-todo-list" "你的库/.obsidian/plugins/dada-todo-list"
+ln -s "$(pwd)/chaochao-list" "你的库/.obsidian/plugins/chaochao-list"
 ```
 
 ## 📄 License

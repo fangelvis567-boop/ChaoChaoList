@@ -314,9 +314,9 @@ export function createEmbeddedEditor(app, host, opts = {}) {
       host.removeEventListener('drop', onDrop, true);
       host.removeEventListener('mousedown', onMouseDown);
       release();
-      try { root.unload(); } catch (e) { console.warn('[dada-todo-list] 卸载内嵌编辑器组件出错:', e); }
+      try { root.unload(); } catch (e) { console.warn('[ChaoChaoList] 卸载内嵌编辑器组件出错:', e); }
       // 组件卸载不会销毁编辑器本身（CodeMirror 视图、建议弹窗等），要单独销毁
-      try { ed.destroy(); } catch (e) { console.warn('[dada-todo-list] 销毁内嵌编辑器出错:', e); }
+      try { ed.destroy(); } catch (e) { console.warn('[ChaoChaoList] 销毁内嵌编辑器出错:', e); }
       host.replaceChildren();
       ed = null;
     }

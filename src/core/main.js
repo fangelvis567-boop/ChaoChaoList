@@ -27,8 +27,9 @@ import './styles/settings.css';
 //   与 app.provide('plugin', this)（兼容 inject 写法），数据层走 saveData / api/tasks.js。
 // ============================================================================
 
-// 视图类型 / 命令 id 等标识符：免费版 manifest.id = dada-todo-list →
-// 沿用历史值 dada-todo-view / open-dada-todo（不破坏老用户）。
+// 视图类型 / 命令 id 等标识符：沿用历史值 dada-todo-view / open-dada-todo（不破坏老用户）。
+// 自用改版 2026-11-11 起插件 id 改为 chaochao-list（原为 dada-todo-list）；
+// 视图类型是固定字符串、不随 id 变，所以已打开的面板和工作区布局不受影响。
 
 /** 待办视图：Obsidian 侧栏面板，挂载 Vue 应用 */
 class DadaTodoView extends ItemView {
@@ -38,7 +39,7 @@ class DadaTodoView extends ItemView {
     this.vueApp = null;
   }
 
-  // 视图类型 / 标题 / 图标：固定为免费版取值（manifest.id = dada-todo-list）。
+  // 视图类型 / 标题 / 图标：固定为历史取值（与插件 id 无关）。
   // 直接读 plugin.manifest.id 而非 plugin.viewType：避免宿主在某些时序下构造视图时
   // 插件实例尚未注入（this.plugin 为空）而读到 undefined.viewType 崩溃。
   // && 短路保证 this.plugin / manifest 任意一层缺失时都有兜底，不会抛错。

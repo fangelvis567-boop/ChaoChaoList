@@ -189,7 +189,7 @@ export default {
     },
     // 打开本插件的设置页：先 open() 打开设置面板（任何 Obsidian 版本都支持），
     // 再尽力 openTabById 直接定位到本插件 Tab；个别旧版本无该方法则忽略，仍停在设置首页。
-    // id 取 manifest.id（即 dada-todo-list）
+    // id 取 manifest.id（即 chaochao-list）
     openSettings() {
       const plugin = this.plugin;
       const app = plugin && plugin.app;
