@@ -82,7 +82,7 @@
                   </div>
                   <!-- 自用改版：有子任务的显示子任务进度（如 1/3）和收起按钮，和列表视图一样 -->
                   <sub-progress v-if="hasSubs(t)" :task="t" class="tk-cl-subprog" />
-                  <button v-if="showFold(t)" class="tk-subfold tk-cl-subfold" :class="{ 'is-folded': isFolded(t) }" type="button"
+                  <button v-if="hasSubs(t)" class="tk-subfold tk-cl-subfold" :class="{ 'is-folded': isFolded(t) }" type="button"
                           v-tooltip="isFolded(t) ? $t('app.subUnfold') : $t('app.subFold')" @click.stop="toggleFold(t)"><i class="la la-angle-down"></i></button>
                   <span v-if="t.dueAt && (!sameJournalDay(t) || (timeText(t) && !t.dueAllDay))" class="tk-cl-date"><template v-if="!sameJournalDay(t)"><i class="tk-date-ico la la-calendar"></i>{{ dateText(t) }}</template><template v-if="timeText(t) && !t.dueAllDay"><i class="tk-date-ico tk-date-ico-sep la la-clock"></i>{{ timeText(t) }}</template></span>
                 </div>
@@ -124,7 +124,7 @@
                 </div>
                 <!-- 自用改版：有子任务的显示子任务进度（如 1/3）和收起按钮，和列表视图一样 -->
                 <sub-progress v-if="hasSubs(t)" :task="t" class="tk-cl-subprog" />
-                <button v-if="showFold(t)" class="tk-subfold tk-cl-subfold" :class="{ 'is-folded': isFolded(t) }" type="button"
+                <button v-if="hasSubs(t)" class="tk-subfold tk-cl-subfold" :class="{ 'is-folded': isFolded(t) }" type="button"
                         v-tooltip="isFolded(t) ? $t('app.subUnfold') : $t('app.subFold')" @click.stop="toggleFold(t)"><i class="la la-angle-down"></i></button>
               </div>
               <div v-if="!g.tasks.length" key="__empty" class="tk-cl-gempty">{{ $t('app.noTasks') }}</div>
@@ -146,7 +146,7 @@ import { taskFilePath } from '../../api/tasks.js';
 import { statusIcon, dateText, timeText, richSummaryNoTags, renderInlineHtml, scheduledText, descPreview, todayKey } from '../../composables/tasks-logic.js';
 import { getClJournalFoldedPref, setClJournalFoldedPref } from '../../composables/viewPrefs.js';
 // 自用改版：子任务挂在主任务下面显示（排行规则见 checklistRows.js）；进度小标、收起状态与列表视图共用
-import { buildChecklistRows, hasVisibleSubtasks } from '../../composables/checklistRows.js';
+import { buildChecklistRows } from '../../composables/checklistRows.js';
 import { hasSubtasks, isSubFolded, toggleSubFold } from '../../composables/subtasks.js';
 import SubProgress from './SubProgress.vue';
 import { VueModal } from '../../ui/VueModal.js';
@@ -267,10 +267,8 @@ export default {
     },
     gKey(g) { return g.title || '___ungrouped'; },
     // ---------- 子任务（自用改版）：进度小标、收起 / 展开 ----------
-    // 有没有子任务（有就显示进度小标，哪怕子任务都做完、被「隐藏已完成」藏起来了）
+    // 有没有子任务：有就显示进度小标和收起按钮（主任务显示出来时，它下面的子任务都会显示，做完的划线）
     hasSubs(t) { return hasSubtasks(t); },
-    // 要不要显示收起按钮：下面此刻有子任务可显示才显示
-    showFold(t) { return hasVisibleSubtasks(t, this.hideDone); },
     // 收起状态的键用「所在文件 + 任务文字」（见 subtasks.js 的 foldKey）。
     // 主题清单里的任务记录没带 file，这里补上清单文件的路径，和列表视图里同一条任务记的是同一个键
     foldRef(t) { return { file: t.file || this.activeFile, summary: t.summary }; },
@@ -511,6 +509,8 @@ export default {
 }
 .tk-cl-row.is-sub .tk-check { font-size: 17px; }
 .tk-cl-row.is-sub .tk-cl-sum { font-size: 13px; }
+/* 做完的子任务划线（和列表视图的子任务清单一样）；整个主任务做完前它都留着，开着「隐藏已完成」也是 */
+.tk-cl-row.is-sub.done .tk-cl-sum { text-decoration: line-through; }
 /* 进度小标、收起按钮与第一行文字对齐 */
 .tk-cl-row > .tk-cl-subprog { margin-top: 2px; }
 .tk-cl-row > .tk-cl-subfold { margin-top: 1px; }

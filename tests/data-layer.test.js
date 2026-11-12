@@ -11,7 +11,7 @@ import {
   parseTasks, serializeBlock, collectLineNos, splitDescription, descPreview
 } from '../src/core/composables/tasks-logic.js';
 import { buildCalendarTasks, subProgress, visibleSubtasks } from '../src/core/composables/subtasks.js';
-import { buildChecklistRows, hasVisibleSubtasks } from '../src/core/composables/checklistRows.js';
+import { buildChecklistRows } from '../src/core/composables/checklistRows.js';
 import { makeVault } from './fake-vault.js';
 
 // ---------- 极简测试框架 ----------
@@ -311,14 +311,16 @@ test('清单页的任务行：子任务紧跟主任务；做完的只在同一�
   eq(r.count, 6, '组名旁的任务数');
 });
 
-test('清单页「隐藏已完成」：做完的主任务下还有没做完的子任务时，主任务留着，下面只列没做完的', () => {
-  const tasks = clTree([['甲', false, [['甲1', true]]], ['乙', true, [['乙1', false], ['乙2', true]]], ['丙', true, [['丙1', true]]]]);
+test('清单页「隐藏已完成」：按主任务整块藏，整块都做完才藏；没做完的整块照常显示（做完的子任务也在）', () => {
+  const tasks = clTree([
+    ['甲', false, [['甲1', true]]],                 // 主任务没做完：做完的子任务照常显示（界面上划线）
+    ['乙', true, [['乙1', false], ['乙2', true]]],  // 主任务做完、子任务没做完：整块都显示
+    ['丙', true, [['丙1', true]]],                  // 整块都做完：藏起来
+    ['丁', true]                                     // 没有子任务、已做完：藏起来
+  ]);
   const r = buildChecklistRows(tasks, { hideDone: true });
-  eq(r.rows.map((t) => t.summary), ['甲', '乙', '乙1'], '显示的行');
+  eq(r.rows.map((t) => t.summary), ['甲', '甲1', '乙', '乙1', '乙2'], '显示的行');
   eq(r.count, 2, '组名旁的任务数只算没做完的（甲、乙1）');
-  const jia = tasks.find((t) => t.summary === '甲');
-  const yi = tasks.find((t) => t.summary === '乙');
-  eq([hasVisibleSubtasks(jia, true), hasVisibleSubtasks(yi, true), hasVisibleSubtasks(jia, false)], [false, true, true], '要不要显示收起按钮');
 });
 
 test('清单页收起主任务：它的子任务不列出来，组名旁的任务数不变', () => {
