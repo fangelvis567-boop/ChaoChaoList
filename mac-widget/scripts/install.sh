@@ -14,7 +14,7 @@
 #   写：
 #     1. mac-widget/build/ChaoChaoListWidgets.app：编译产物（build 目录已被 git 忽略，每次安装先清空它重新编译）
 #     2. /Applications/ChaoChaoListWidgets.app：
-#        已经装过时，先结束正在运行的旧版小程序，把旧版整个移到
+#        已经装过时，先结束正在运行的旧版小程序和小组件进程，把旧版整个移到
 #        ~/Developer/dada-plugin-backups/<日期时间>-小组件旧版/ 里（不删除），再放入新版
 #     3. 向系统登记新版：
 #        lsregister —— 让系统认得 chaochaolist-widget:// 这种网址（插件用它请小程序刷新小组件）
@@ -117,6 +117,9 @@ codesign --verify --deep --strict "$APP"
 say "== 安装 =="
 if [ -e "$DEST" ]; then
   pkill -x "$NAME" 2>/dev/null || true   # 结束正在运行的旧版小程序（没在运行就跳过）
+  # 也结束正在运行的旧版小组件进程：不结束的话，系统会一直找这个旧进程，
+  # 拿不到新版的小组件清单（新加的小组件不出现），画图也会失败。系统需要时会自动启动新版
+  pkill -x "$EXT_NAME" 2>/dev/null || true
   BK="$BACKUP_ROOT/$(date +%Y-%m-%d-%H%M%S)-小组件旧版"
   mkdir -p "$BK"
   mv "$DEST" "$BK/"
@@ -136,4 +139,4 @@ else
   say "注意：系统里暂时查不到小组件 $WIDGET_ID（可能还在登记，稍后用下面这行再查）："
   say "  pluginkit -m -p com.apple.widgetkit-extension -i $WIDGET_ID"
 fi
-say "下一步：在桌面空白处右键 →「编辑小组件」，搜索 ChaoChaoList，把「四象限」拖到桌面。"
+say "下一步：在桌面空白处右键 →「编辑小组件」，搜索 ChaoChaoList，把「四象限」「月视图」拖到桌面。"

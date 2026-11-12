@@ -2,7 +2,9 @@
 
 把 ChaoChaoList 的视图做成 Mac 桌面小组件，样子参照滴答清单的小组件。只显示、不能勾选，点一下打开 Obsidian 里对应的视图。
 
-目前有：**四象限**（大尺寸）。计划中：月视图。
+目前有（都是大尺寸）：
+- **四象限**：点任意处打开四象限视图。
+- **月视图**：这个月的月历，跨天任务画成长条，一格放不下的写「+N」；点某一天打开那天的日视图，点月份名打开月视图。插件同时导出下个月，所以月底之后即使 Obsidian 没开，小组件也能换到新的月份；每天零点「今天」的圆圈自己换到新的一天。
 
 ## 它由三部分组成
 
@@ -23,7 +25,9 @@ bash mac-widget/scripts/install.sh             # 正式安装（再次运行 = �
 
 需要已装 Xcode。默认用本机临时签名（不需要 Apple ID）；如果系统不认，就在 Xcode 里登录 Apple ID、建好「Apple Development」证书，再用 `SIGN_ID="Apple Development: …" bash mac-widget/scripts/install.sh` 安装。
 
-装好后：桌面空白处右键 →「编辑小组件」→ 搜索 ChaoChaoList → 把「四象限」拖到桌面。
+装好后：桌面空白处右键 →「编辑小组件」→ 搜索 ChaoChaoList → 把「四象限」「月视图」拖到桌面。
+
+改了小组件程序后：把 `Resources/App-Info.plist`、`Resources/Widget-Info.plist` 的版本号一起加大，再运行安装脚本（系统按版本号判断要不要重新读取小组件）。不要用 `plutil -replace` 改这两个文件，它会删掉里面的中文注释。
 
 插件设置里的「Mac 桌面小组件」开关可以停掉导出（只在 Mac 桌面版显示）。在测试库里测完要把它关掉，否则测试库会用自己的数据覆盖主库的小组件数据。
 
@@ -35,11 +39,19 @@ bash mac-widget/scripts/install.sh             # 正式安装（再次运行 = �
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 xcrun swiftc -parse-as-library -target arm64-apple-macos14.0 -sdk "$SDK" -o /tmp/RenderPreview \
   mac-widget/Sources/Shared/*.swift mac-widget/Sources/Preview/*.swift
-/tmp/RenderPreview ~/Library/Application\ Support/ChaoChaoList/widget-data.json /tmp/matrix.png 344 344
+/tmp/RenderPreview ~/Library/Application\ Support/ChaoChaoList/widget-data.json /tmp/matrix.png
+/tmp/RenderPreview ~/Library/Application\ Support/ChaoChaoList/widget-data.json /tmp/month.png --kind month --today 2026-11-12 --dark
 ```
+
+可选参数：`--kind matrix|month`（默认四象限）、`--size 宽x高`（默认 344x344）、`--today YYYY-MM-DD`（月视图按哪天当今天）、`--dark`（深色模式）。
+
+要看测试库会导出什么、又不想覆盖主库写出的数据文件，可以在测试库里调用插件的 `widgetExport.buildData()`（只算不写）。
 
 ## 排查
 
 - 小组件显示「还没有数据」：打开一次 Obsidian（主库），插件会写出数据文件。
 - 内容没跟上：系统会限制小组件的刷新次数，等一会儿；或者看数据文件里的 `generatedAt`（写出时间）是不是最新。
 - 查系统有没有认出小组件：`pluginkit -m -p com.apple.widgetkit-extension -i app.chaochaolist.widgets.extension`
+- 「编辑小组件」里找不到：先看 `~/Library/Logs/DiagnosticReports/ChaoChaoListWidgetsExtension-*.ips` 有没有崩溃报告。查系统日志要写 `/usr/bin/log show …`（zsh 里 `log` 是别的命令）。
+- 月视图显示「数据里还没有月视图」：Obsidian 里的插件还是旧版，更新插件即可。
+- 装了新版，新加的小组件却没出现、已有的变成灰色占位：多半是旧版的小组件进程还在跑，系统一直找它。安装脚本会自动结束它；手动处理用 `pkill -x ChaoChaoListWidgetsExtension`，再重新打开「编辑小组件」。

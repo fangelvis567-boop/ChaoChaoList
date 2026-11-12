@@ -16,10 +16,95 @@ struct WidgetData: Decodable, Sendable {
     let generatedAt: Double?
     /// 库名（点小组件时打开这个库）
     let vault: String
-    /// 点小组件时打开的地址：键是视图（目前只有 matrix），值是 obsidian://chaochao-list?vault=…&view=…
+    /// 点小组件时打开的地址：键是视图（matrix 四象限、month 月视图、day 日视图），
+    /// 值是 obsidian://chaochao-list?vault=…&view=…；month、day 里的 {date} 换成 YYYY-MM-DD
     let openUrl: [String: String]
     /// 四象限的内容
     let matrix: MatrixData?
+    /// 月视图的内容（插件 1.0.5 之前的数据里没有）
+    let month: MonthWidgetData?
+
+    /// 打开某个视图的地址；date 给了就替换地址里的 {date}
+    func url(_ view: String, date: String? = nil) -> URL? {
+        guard var s = openUrl[view] else { return nil }
+        if let date { s = s.replacingOccurrences(of: "{date}", with: date) }
+        return URL(string: s)
+    }
+}
+
+/// 月视图：这个月和下个月的月历
+struct MonthWidgetData: Decodable, Sendable {
+    /// 表头的周几（已按每周开始日排好）
+    let weekdays: [String]
+    /// 法定节假日徽标的文字（「休」「班」）
+    let restText: String
+    let workText: String
+    /// 月历（第一个是导出时的这个月，第二个是下个月）
+    let months: [MonthGrid]
+}
+
+/// 一个月的月历
+struct MonthGrid: Decodable, Sendable {
+    /// YYYY-MM
+    let key: String
+    let year: Int
+    let month: Int
+    /// 月份名（「十一月」）
+    let title: String
+    /// 每一行是一周（7 天）
+    let weeks: [MonthWeek]
+}
+
+/// 月历里的一周
+struct MonthWeek: Decodable, Sendable {
+    let days: [MonthDay]
+    /// 这一周里的跨天长条
+    let bars: [MonthBar]
+}
+
+/// 月历里的一天
+struct MonthDay: Decodable, Sendable {
+    /// YYYY-MM-DD
+    let key: String
+    /// 几号
+    let day: Int
+    /// 不是本月的（前后补齐用的日子）
+    let other: Bool
+    /// 法定节假日：rest 休 / work 班 / 空
+    let holiday: String
+    /// 节气或节日名（如「立冬」）
+    let tag: String
+    /// 这天的单日任务一共几条（chips 可能只写了前几条）
+    let chipTotal: Int
+    /// 这天的单日任务（已按插件里的顺序排好）
+    let chips: [MonthItem]
+}
+
+/// 月历里的一条任务
+struct MonthItem: Decodable, Sendable {
+    let text: String
+    /// 底色 #rrggbbaa；空 = 默认灰底
+    let bg: String
+    /// 文字色 #rrggbbaa；空 = 默认文字色
+    let fg: String
+    /// 做完或取消了（只在关掉「隐藏已完成」时出现）
+    let done: Bool
+}
+
+/// 跨天长条：在这一周里从第 start 列到第 end 列（0–6），放在第 lane 道
+struct MonthBar: Decodable, Sendable {
+    let text: String
+    let bg: String
+    let fg: String
+    let done: Bool
+    let start: Int
+    let end: Int
+    let lane: Int
+    /// 这周之前就开始了 / 这周之后还没结束（那一端画成直角，表示接着别的周）
+    let contStart: Bool
+    let contEnd: Bool
+
+    var item: MonthItem { MonthItem(text: text, bg: bg, fg: fg, done: done) }
 }
 
 /// 四象限
@@ -133,24 +218,61 @@ extension WidgetData {
                     TaskLine(text: "单词 201-400", depth: 0, done: false)
                 ])
             ]
-        )
+        ),
+        month: nil
     )
 }
 
+extension MonthWidgetData {
+    /// 示例月历：还没有真实数据时在「编辑小组件」里预览用（today 所在的月，周一开头，放几条示例任务）
+    static func sample(today: Date) -> MonthWidgetData {
+        let cal = Calendar(identifier: .gregorian)
+        let comps = cal.dateComponents([.year, .month], from: today)
+        let year = comps.year ?? 2026, month = comps.month ?? 1
+        let first = cal.date(from: DateComponents(year: year, month: month, day: 1)) ?? today
+        // 周一开头：往前补到周一（weekday：1=周日 … 7=周六）
+        let lead = (cal.component(.weekday, from: first) + 5) % 7
+        let daysInMonth = cal.range(of: .day, in: .month, for: first)?.count ?? 30
+        let totalCells = Int(ceil(Double(lead + daysInMonth) / 7.0)) * 7
+        let demo = ["组会", "写论文", "听力精听", "读文献"]
+        var weeks: [MonthWeek] = []
+        var cells: [MonthDay] = []
+        for i in 0..<totalCells {
+            let date = cal.date(byAdding: .day, value: i - lead, to: first) ?? first
+            let d = cal.dateComponents([.year, .month, .day], from: date)
+            let key = String(format: "%04d-%02d-%02d", d.year ?? 0, d.month ?? 0, d.day ?? 0)
+            let other = d.month != month
+            let chips = (!other && (d.day ?? 0) % 3 == 1)
+                ? [MonthItem(text: demo[(d.day ?? 0) % demo.count], bg: "#4a90d22e", fg: "", done: false)] : []
+            cells.append(MonthDay(key: key, day: d.day ?? 0, other: other, holiday: "", tag: "",
+                                  chipTotal: chips.count, chips: chips))
+            if cells.count == 7 {
+                weeks.append(MonthWeek(days: cells, bars: []))
+                cells = []
+            }
+        }
+        let title = "\(month)月"
+        return MonthWidgetData(weekdays: ["一", "二", "三", "四", "五", "六", "日"], restText: "休", workText: "班",
+                               months: [MonthGrid(key: String(format: "%04d-%02d", year, month), year: year, month: month,
+                                                  title: title, weeks: weeks)])
+    }
+}
+
 extension Color {
-    /// 由 #rrggbb 生成颜色；写错时退回灰色
+    /// 由 #rrggbb 或 #rrggbbaa（最后两位是透明度）生成颜色；写错时退回灰色
     init(hex: String) {
         var s = hex.trimmingCharacters(in: .whitespaces)
         if s.hasPrefix("#") { s.removeFirst() }
         var v: UInt64 = 0
-        guard s.count == 6, Scanner(string: s).scanHexInt64(&v) else {
+        guard s.count == 6 || s.count == 8, Scanner(string: s).scanHexInt64(&v) else {
             self = .gray
             return
         }
+        if s.count == 6 { v = (v << 8) | 0xff }
         self.init(.sRGB,
-                  red: Double((v >> 16) & 0xff) / 255,
-                  green: Double((v >> 8) & 0xff) / 255,
-                  blue: Double(v & 0xff) / 255,
-                  opacity: 1)
+                  red: Double((v >> 24) & 0xff) / 255,
+                  green: Double((v >> 16) & 0xff) / 255,
+                  blue: Double((v >> 8) & 0xff) / 255,
+                  opacity: Double(v & 0xff) / 255)
     }
 }
