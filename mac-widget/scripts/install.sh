@@ -10,7 +10,8 @@
 #                                                 不需要 Apple ID；系统若不认临时签名的小组件，再改用证书
 #
 # 它会读写什么：
-#   读：mac-widget/Sources、mac-widget/Resources 里的源码和配置；Xcode 自带的编译器（swiftc）和 macOS SDK
+#   读：mac-widget/Sources、mac-widget/Resources 里的源码、配置、程序图标（AppIcon.icns）和各语言的程序名（*.lproj）；
+#       Xcode 自带的编译器（swiftc）和 macOS SDK
 #   写：
 #     1. mac-widget/build/ChaoChaoListWidgets.app：编译产物（build 目录已被 git 忽略，每次安装先清空它重新编译）
 #     2. /Applications/ChaoChaoListWidgets.app：
@@ -64,6 +65,7 @@ case "$(uname -m)" in
   *)     TARGET="x86_64-apple-macos14.0" ;;
 esac
 for f in Resources/App-Info.plist Resources/Widget-Info.plist Resources/Widget.entitlements \
+         Resources/AppIcon.icns Resources/zh-Hans.lproj/InfoPlist.strings \
          Sources/App/HelperApp.swift Sources/Widget/ChaoChaoListWidgets.swift \
          Sources/Shared/WidgetData.swift Sources/Shared/MatrixWidgetView.swift; do
   [ -f "$HERE/$f" ] || fail "缺少文件：mac-widget/$f"
@@ -106,6 +108,12 @@ mkdir -p "$APP/Contents/MacOS" "$APPEX/Contents/MacOS"
 cp "$HERE/Resources/App-Info.plist" "$APP/Contents/Info.plist"
 cp "$HERE/Resources/Widget-Info.plist" "$APPEX/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
+# 程序图标和各语言的程序名（「编辑小组件」里显示 ChaoChaoList，靠的是这些语言包）
+mkdir -p "$APP/Contents/Resources"
+cp "$HERE/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+for lproj in "$HERE"/Resources/*.lproj; do
+  cp -R "$lproj" "$APP/Contents/Resources/"
+done
 
 # ---------- 3. 签名（先里后外）----------
 say "== 签名 =="

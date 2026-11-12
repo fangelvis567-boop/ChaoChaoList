@@ -47,6 +47,19 @@ xcrun swiftc -parse-as-library -target arm64-apple-macos14.0 -sdk "$SDK" -o /tmp
 
 要看测试库会导出什么、又不想覆盖主库写出的数据文件，可以在测试库里调用插件的 `widgetExport.buildData()`（只算不写）。
 
+## 程序名和图标
+
+- 「编辑小组件」、访达里显示的程序名来自 `Resources/*.lproj/InfoPlist.strings`（ChaoChaoList）。要生效，`App-Info.plist` 里的 `CFBundleName`、`CFBundleDisplayName` 必须和程序文件名 `ChaoChaoListWidgets` 一致，并打开 `LSHasLocalizedDisplayName`（滴答清单也是这样做的）。
+- 图标 `Resources/AppIcon.icns` 由 `Sources/Icon/MakeIcon.swift` 画出。改图案后重新生成：
+
+```bash
+SDK="$(xcrun --sdk macosx --show-sdk-path)"
+xcrun swiftc -parse-as-library -target arm64-apple-macos14.0 -sdk "$SDK" -o /tmp/MakeIcon mac-widget/Sources/Icon/MakeIcon.swift
+/tmp/MakeIcon /tmp/AppIcon.iconset && iconutil -c icns /tmp/AppIcon.iconset -o mac-widget/Resources/AppIcon.icns
+```
+
+然后把两个 Info.plist 的版本号加一，重新运行安装脚本。
+
 ## 排查
 
 - 小组件显示「还没有数据」：打开一次 Obsidian（主库），插件会写出数据文件。

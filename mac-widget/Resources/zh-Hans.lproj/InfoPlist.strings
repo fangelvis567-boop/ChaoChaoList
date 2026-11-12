@@ -1,0 +1,3 @@
+/* 简体中文环境下「编辑小组件」、访达里显示的程序名（要生效，App-Info.plist 里的名字须与程序文件名一致） */
+"CFBundleDisplayName" = "ChaoChaoList";
+"CFBundleName" = "ChaoChaoList";

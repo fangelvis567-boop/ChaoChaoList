@@ -1,0 +1,3 @@
+/* App name shown in the widget gallery and Finder when the system language is English */
+"CFBundleDisplayName" = "ChaoChaoList";
+"CFBundleName" = "ChaoChaoList";

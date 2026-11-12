@@ -4,33 +4,41 @@
   宿主程序 ChaoChaoListWidgets.app 的说明文件。
   LSUIElement：不在 Dock、⌘Tab 里出现，也没有菜单栏。
   CFBundleURLTypes：登记 chaochaolist-widget:// 这种网址，插件用它请本程序刷新小组件。
+  程序名：CFBundleName / CFBundleDisplayName 必须和程序文件名（ChaoChaoListWidgets.app）一致，
+    系统才会改用各语言包（Resources/*.lproj/InfoPlist.strings）里的名字「ChaoChaoList」，
+    「编辑小组件」、访达里显示的就是它（滴答清单也是这样做的）。两边不一致时系统会显示文件名。
+  CFBundleIconFile：程序图标 Resources/AppIcon.icns（由 Sources/Icon/MakeIcon.swift 画出）。
   改版本号时，同时改 Widget-Info.plist 里的版本号（系统按版本号判断要不要重新读取小组件）。
   注意：不要用 plutil -replace 改这个文件，它会删掉这段注释；直接编辑即可。
 -->
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>zh_CN</string>
+	<string>zh-Hans</string>
 	<key>CFBundleDisplayName</key>
-	<string>ChaoChaoList</string>
+	<string>ChaoChaoListWidgets</string>
 	<key>CFBundleExecutable</key>
 	<string>ChaoChaoListWidgets</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>app.chaochaolist.widgets</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>ChaoChaoList</string>
+	<string>ChaoChaoListWidgets</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.2.1</string>
+	<string>0.3.0</string>
 	<key>CFBundleVersion</key>
-	<string>4</string>
+	<string>5</string>
 	<key>CFBundleSupportedPlatforms</key>
 	<array>
 		<string>MacOSX</string>
 	</array>
+	<key>LSHasLocalizedDisplayName</key>
+	<true/>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>

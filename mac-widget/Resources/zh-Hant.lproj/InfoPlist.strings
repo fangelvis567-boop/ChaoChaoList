@@ -1,0 +1,3 @@
+/* 繁體中文環境下「編輯小工具」、Finder 裡顯示的程式名 */
+"CFBundleDisplayName" = "ChaoChaoList";
+"CFBundleName" = "ChaoChaoList";
