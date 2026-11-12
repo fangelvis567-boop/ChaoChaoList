@@ -290,7 +290,7 @@
     "showLunar": "顯示農曆與節假日",
     "showLunarDesc": "在日、週、月視圖的表頭與日曆格顯示農曆、節氣、節日與法定節假日的休班標記。關閉後只顯示公曆。",
     "widgetExport": "Mac 桌面小工具",
-    "widgetExportDesc": "把四象限的內容寫到這台 Mac 上（~/Library/Application Support/ChaoChaoList/），供「ChaoChaoList 小工具」顯示在桌面上。只在 Mac 桌面版起作用，不會同步到其他裝置。",
+    "widgetExportDesc": "把四象限和月視圖的內容寫到這台 Mac 上（~/Library/Application Support/ChaoChaoList/），供「ChaoChaoList 小工具」顯示在桌面上。只在 Mac 桌面版起作用，不會同步到其他裝置。",
     "addDoneDateMarker": "完成任務時新增完成日期標記",
     "addDoneDateMarkerDesc": "完成任務時在任務行末尾附加完成日期，例如 ✅ 2026-10-06。",
     "weekStart": "每週開始日",

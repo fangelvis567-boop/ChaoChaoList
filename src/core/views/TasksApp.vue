@@ -102,7 +102,7 @@ import {
   renderInlineHtml, plainInline,
   dateText, timeText, statusIcon, plainTitle, richSummaryNoTags, doneDay, spanDateText,
   colorOf, itemColor, lunarDayText, lunarTagText, holidayOf, weekdayLong,
-  getWeekStart, spansDays, tagColorOf, usedTagColors, moveToDay, shiftSpanToDay, tagMapper
+  getWeekStart, spansDays, tagColorOf, usedTagColors, moveToDay, shiftSpanToDay, tagMapper, groupTasksByDay
 } from '../composables/tasks-logic.js';
 import TaskEditorModal from '../components/TaskEditorModal.vue';
 import TaskTopBar from '../components/TaskTopBar.vue';
@@ -263,30 +263,9 @@ export default {
     // 日历类视图（日 / 周 / 月 / 日程）用的任务表（自用改版）：顶层任务，外加子任务的「↳ 副本」——
     // 带自己日期、且不落在父任务那几天的子任务，在自己那天另放一份（规则见 composables/subtasks.js）
     calendarTasks() { return buildCalendarTasks(this.tasks); },
-    // 按天预分组：避免周/月视图每次渲染都对全量任务逐格过滤（上千任务 × 42 格）
-    tasksByDay() {
-      const rank = (t) => (t.cancelled ? 2 : t.completed ? 1 : 0); // 未完成→已完成→已取消
-      const DAY = 86400000;
-      const map = {};
-      for (const t of this.calendarTasks) {
-        if (!t.dueAt) continue;
-        // 跨日期任务（开始日早于到期日）铺满开始日→到期日的每一天；逆序/单日只点到期日
-        const startMs = spansDays(t) ? Number(t.startAt) : Number(t.dueAt);
-        let cur = new Date(startMs);
-        let guard = 0;
-        while (guard++ < 400) {
-          const k = ymd(cur);
-          if (!map[k]) map[k] = [];
-          map[k].push(t);
-          if (cur.getTime() >= t.dueAt) break;
-          cur = new Date(cur.getTime() + DAY);
-        }
-      }
-      for (const k of Object.keys(map)) {
-        map[k].sort((a, b) => rank(a) - rank(b) || (a.dueAt || 0) - (b.dueAt || 0));
-      }
-      return map;
-    },
+    // 按天预分组：避免周/月视图每次渲染都对全量任务逐格过滤（上千任务 × 42 格）。
+    // 规则见 tasks-logic.js 的 groupTasksByDay（自用改版：挪过去与 Mac 桌面小组件的月视图共用）
+    tasksByDay() { return groupTasksByDay(this.calendarTasks); },
     // 今日零点（本地时区）
     today0Ms() {
       const d = new Date();

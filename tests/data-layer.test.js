@@ -10,9 +10,11 @@ import {
 import {
   parseTasks, serializeBlock, collectLineNos, splitDescription, descPreview,
   timeText, spansDays, moveToDay, shiftSpanToDay, tagMapper, rewriteTagsInText, cleanTagName,
-  levelToPriorityEmoji
+  levelToPriorityEmoji, setTagColors, lunarTagText, holidayOf
 } from '../src/core/composables/tasks-logic.js';
-import { buildMatrixWidget, buildWidgetData, widgetTitle } from '../src/core/composables/widgetSnapshot.js';
+import {
+  buildMatrixWidget, buildWidgetData, widgetTitle, buildMonthWidget, cssColorToHex
+} from '../src/core/composables/widgetSnapshot.js';
 import { ReminderService } from '../src/core/services/reminder.js';
 import { buildCalendarTasks, subProgress, visibleSubtasks } from '../src/core/composables/subtasks.js';
 import { buildChecklistRows } from '../src/core/composables/checklistRows.js';
@@ -703,11 +705,15 @@ test('标签组：移进组、给组改名、移出组、解散组，都按「#�
 // ============================================================
 
 /** 测试用的界面文字：只认小组件用到的几个键，其余原样返回键名 */
-const fakeT = (key, p) => ({
-  'app.viewMatrix': '四象限', 'app.matrixEmpty': '暂无任务', 'app.widgetMore': '还有 {{n}} 条',
-  'app.matrixTitleHigh': '重要且紧急', 'app.matrixTitleMedium': '重要不紧急',
-  'app.matrixTitleLow': '紧急不重要', 'app.matrixTitleNone': '不重要不紧急'
-}[key] || key).replace('{{n}}', p && p.n);
+const fakeT = (key, p) => {
+  if (key === 'app.weekdaysShort') return ['一', '二', '三', '四', '五', '六', '日'];
+  return ({
+    'app.viewMatrix': '四象限', 'app.matrixEmpty': '暂无任务', 'app.widgetMore': '还有 {{n}} 条',
+    'app.matrixTitleHigh': '重要且紧急', 'app.matrixTitleMedium': '重要不紧急',
+    'app.matrixTitleLow': '紧急不重要', 'app.matrixTitleNone': '不重要不紧急',
+    'app.rest': '休', 'app.work': '班'
+  }[key] || key).replace('{{n}}', p && p.n);
+};
 /** 只取每格的行：[[文字, 缩进, 是否做完], …]，方便逐格比对 */
 const quadLines = (m) => m.quadrants.map((q) => q.items.map((i) => [i.text, i.depth, i.done]));
 
@@ -758,6 +764,55 @@ test('小组件数据：行数太多时截短但记下总数；点小组件打�
   const none = d.matrix.quadrants[3];
   eq([none.total, none.items.map((i) => i.text)], [5, ['任务1', '任务2', '任务3']], '只写前 3 行，总数仍是 5');
   eq([widgetTitle('读 [论文](https://x.y/z) #科研 '), widgetTitle('#只有标签')], ['读 论文', '#只有标签'], '标题的写法');
+  eq(d.openUrl.day.endsWith('&view=day&date={date}') && d.openUrl.month.endsWith('&view=month&date={date}'), true, '日视图、月视图的打开地址');
+});
+
+test('颜色换算：CSS 颜色换成 #rrggbbaa，认不出的（如 var(--ink)）返回空串', () => {
+  eq(['#4caf7d', '#abc', '#11223344', 'rgba(244, 67, 54, .18)', 'rgb(0,128,255)', 'var(--ink)', ''].map(cssColorToHex),
+    ['#4caf7dff', '#aabbccff', '#11223344', '#f443362e', '#0080ffff', '', '']);
+});
+
+test('月视图小组件：两个月的月历按每周开始日排；跨天长条、按天的任务、↳ 副本、标签颜色、隐藏已完成都和面板一致', async () => {
+  vaultWith({
+    [DAILY.replace('2026-05-27', '2026-11-12')]: HEAD_DAILY + '- [ ] 日记任务\n- [x] 做完的 ✅ 2026-11-12\n- [ ] 跨三天 📅 2026-11-14\n',
+    'Inbox.md': HEAD_INBOX + '- [ ] 收件箱带日期 #财务 📅 2026-11-03\n- [ ] 主任务 📅 2026-11-05\n\t- [ ] 子任务另一天 📅 2026-11-20\n'
+  });
+  setTagColors({ 财务: '#4caf7d' });
+  try {
+    const tasks = body(await loadAll()).items;
+    const opts = { t: fakeT, now: new Date(2026, 10, 12), weekStart: 1, hideDone: true, showLunar: true, lang: 'zh-cn' };
+    const w = buildMonthWidget(tasks, opts);
+    eq([w.weekdays.join(''), w.restText, w.workText], ['一二三四五六日', '休', '班'], '表头周几和休 / 班');
+    eq(w.months.map((m) => [m.key, m.title, m.weeks.length]), [['2026-11', '十一月', 6], ['2026-12', '十二月', 5]], '这个月和下个月');
+    const nov = w.months[0];
+    const keysOf = (wk) => wk.days.map((d) => d.key.slice(5));
+    eq([keysOf(nov.weeks[0]), nov.weeks[0].days.map((d) => d.other)], [
+      ['10-26', '10-27', '10-28', '10-29', '10-30', '10-31', '11-01'], [true, true, true, true, true, true, false]
+    ], '第一周从周一开始，用上个月的日子补齐');
+    eq(keysOf(nov.weeks[5]), ['11-30', '12-01', '12-02', '12-03', '12-04', '12-05', '12-06'], '最后一周用下个月补齐');
+
+    const day = (key) => nov.weeks.flatMap((wk) => wk.days).find((d) => d.key === key);
+    const texts = (d) => d.chips.map((c) => (c.done ? '√' : '') + c.text);
+    eq([texts(day('2026-11-12')), day('2026-11-12').chipTotal], [['日记任务'], 1], '隐藏已完成：做完的不列；跨天任务不算进单日');
+    eq(nov.weeks[2].bars.map((b) => [b.text, b.start, b.end, b.lane, b.contStart, b.contEnd]), [['跨三天', 3, 5, 0, false, false]], '跨天长条：周四到周六');
+    eq([texts(day('2026-11-05')), texts(day('2026-11-20'))], [['主任务'], ['↳ 子任务另一天']], '子任务在自己那天另放一份 ↳ 副本');
+    const fin = day('2026-11-03').chips[0];
+    eq([fin.text, fin.bg, fin.fg], ['收件箱带日期', '#4caf7d47', ''], '标签颜色当底色（与面板同一透明度），文字用默认色');
+    ok(/^#[0-9a-f]{8}$/.test(day('2026-11-05').chips[0].bg), '没设标签颜色的按配色方案取色');
+
+    const all = nov.weeks.flatMap((wk) => wk.days);
+    ok(all.every((d) => d.tag === lunarTagText(new Date(d.key + 'T00:00:00'))), '节气 / 节日名与面板一致');
+    ok(all.every((d) => { const h = holidayOf(d.key); return d.holiday === (h ? (h.rest ? 'rest' : 'work') : ''); }), '休 / 班与面板一致');
+
+    const shown = buildMonthWidget(tasks, Object.assign({}, opts, { hideDone: false }));
+    eq(texts(shown.months[0].weeks[2].days[3]), ['日记任务', '√做完的'], '显示已完成：做完的排在后面');
+    const noLunar = buildMonthWidget(tasks, Object.assign({}, opts, { showLunar: false }));
+    ok(noLunar.months[0].weeks.flatMap((wk) => wk.days).every((d) => d.tag === '' && d.holiday === ''), '关掉农历与节假日后都不带');
+    const sun = buildMonthWidget(tasks, Object.assign({}, opts, { weekStart: 0 }));
+    eq([sun.weekdays.join(''), sun.months[0].weeks[0].days[0].key, sun.months[0].weeks.length], ['日一二三四五六', '2026-11-01', 5], '每周从周日开始');
+  } finally {
+    setTagColors({});
+  }
 });
 
 // ---------- 逐个运行并汇总 ----------

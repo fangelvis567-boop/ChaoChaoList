@@ -132,6 +132,33 @@ export function spansDays(t) {
   return sk < ek; // 仅当开始日早于结束日才视为跨天（逆序退化为单日）
 }
 
+// 日历类视图的「按天分组」：{ 'YYYY-MM-DD': [任务…] }。
+// 跨日期任务（开始日早于到期日）铺满开始日→到期日的每一天；逆序 / 单日只放在到期日；没有日期的不放。
+// 每天里按 未完成 → 已完成 → 已取消 排，同一类按到期时间从早到晚。
+// （自用改版：原先写在 views/TasksApp.vue 的 tasksByDay 里，挪到这里后 Mac 桌面小组件的月视图也用同一份）
+export function groupTasksByDay(list) {
+  const rank = (t) => (t.cancelled ? 2 : t.completed ? 1 : 0); // 未完成→已完成→已取消
+  const DAY = 86400000;
+  const map = {};
+  for (const t of (list || [])) {
+    if (!t || !t.dueAt) continue;
+    const startMs = spansDays(t) ? Number(t.startAt) : Number(t.dueAt);
+    let cur = new Date(startMs);
+    let guard = 0;
+    while (guard++ < 400) {
+      const k = todayKey(cur.getTime());
+      if (!map[k]) map[k] = [];
+      map[k].push(t);
+      if (cur.getTime() >= t.dueAt) break;
+      cur = new Date(cur.getTime() + DAY);
+    }
+  }
+  for (const k of Object.keys(map)) {
+    map[k].sort((a, b) => rank(a) - rank(b) || (a.dueAt || 0) - (b.dueAt || 0));
+  }
+  return map;
+}
+
 // 自用改版：把一个时间戳挪到另一天（YYYY-MM-DD），时、分不变。
 // 拖动跨天长条的一端改日期时用，免得带时间的任务被抹成 0 点。dayKey 格式不对时原样返回
 export function moveToDay(ms, dayKey) {

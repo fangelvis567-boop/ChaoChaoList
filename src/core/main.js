@@ -161,9 +161,10 @@ export default class DadaTodoPlugin extends Plugin {
   }
 
   /**
-   * 处理 obsidian://chaochao-list?view=… （Mac 桌面小组件点击时打开）：打开面板并切到指定视图。
+   * 处理 obsidian://chaochao-list?view=…&date=… （Mac 桌面小组件点击时打开）：打开面板并切到指定视图。
    * view 不认识时只打开面板。面板还没打开时先记下视图，面板打开后就停在那个视图上。
-   * @param {Object} params Obsidian 解析好的网址参数（含 view）
+   * date（YYYY-MM-DD，可选）：日视图翻到那一天；月视图翻到那一天所在的月份。
+   * @param {Object} params Obsidian 解析好的网址参数（含 view、date）
    */
   async openFromUri(params) {
     const view = String((params && params.view) || '');
@@ -173,7 +174,18 @@ export default class DadaTodoPlugin extends Plugin {
     if (!known) return;
     const leaf = this.app.workspace.getLeavesOfType(this.viewType)[0];
     const root = leaf && leaf.view && leaf.view.vueRoot;
-    if (root && root.view !== view && typeof root.switchView === 'function') root.switchView(view);
+    if (!root) return;
+    if (root.view !== view && typeof root.switchView === 'function') root.switchView(view);
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String((params && params.date) || ''));
+    if (!m) return;
+    if (view === 'day' && typeof root.thisDay === 'function') {
+      root.thisDay(); // 先回到今天（顺便更新「今天」），再按相差的天数往前 / 往后翻
+      const target = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      const today = new Date(root.todayKey + 'T00:00:00');
+      root.tlDayOffset = Math.round((target - today) / 86400000);
+    } else if (view === 'month') {
+      root.currentMonth = new Date(Number(m[1]), Number(m[2]) - 1, 1);
+    }
   }
 
   /** 设置里开关「Mac 桌面小组件」后调用：按新设置启动或停止导出 */
@@ -359,5 +371,7 @@ export default class DadaTodoPlugin extends Plugin {
       const ok = !!(v && v.vueRoot && typeof v.vueRoot.load === 'function');
       if (ok) v.vueRoot.load();
     }
+    // Mac 桌面小组件（自用改版）：改了配色、标签颜色、每周开始日、农历开关等设置后，小组件也跟着重新导出
+    if (this.widgetExport) this.widgetExport.schedule();
   }
 }

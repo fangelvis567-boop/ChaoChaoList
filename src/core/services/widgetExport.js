@@ -1,10 +1,11 @@
 // ============================================================================
 // Mac 桌面小组件的数据导出（自用改版）
 // ----------------------------------------------------------------------------
-// 做什么：任务有变化时，把小组件要显示的内容（目前是四象限，算法见 composables/widgetSnapshot.js）
+// 做什么：任务有变化时，把小组件要显示的内容（四象限、这个月和下个月的月历，算法见 composables/widgetSnapshot.js）
 //   写到本机文件，再请 Mac 上的「ChaoChaoList 小组件」程序通知系统刷新小组件。
 //
-// 读：库里的任务（Tasks.loadAll，和面板同一套读法）；本机的界面偏好（「隐藏已完成」、子任务折叠）。
+// 读：库里的任务（Tasks.loadAll，和面板同一套读法）；本机的界面偏好（「隐藏已完成」、子任务折叠）；
+//     插件设置里的每周开始日、显示农历与节假日、配色方案和标签颜色。
 // 写：只写一个文件 ~/Library/Application Support/ChaoChaoList/widget-data.json
 //     （先写同目录的 .tmp 临时文件再改名替换，小组件不会读到写了一半的内容）。
 //     这个文件在库外面：不会被同步到别的设备，也不会出现在笔记列表里。
@@ -12,7 +13,8 @@
 //     （-g：不把它切到前台；它没有窗口，也不占 Dock）。没装这个程序就跳过，不报错。
 //
 // 什么时候算一次：插件启动后；库里文件有改动、新建、删除、改名后（等 1.5 秒，连续改动只算一次）；
-//   在面板里切换「隐藏已完成」或折叠 / 展开子任务后；另外每 10 分钟兜底一次。
+//   在面板里切换「隐藏已完成」或折叠 / 展开子任务后；改了会影响显示的设置后（main.js 的 reloadOpenViews）；
+//   另外每 10 分钟兜底一次（也顺带跟上跨天、跨月）。
 //   算出来的内容和上次一样时不写文件、也不通知，省得小组件白白刷新（系统对刷新次数有限制）。
 //
 // 只在 Mac 桌面版启动：手机、平板、Windows、Linux 上什么也不做。设置里可以关掉（widgetExport）。
@@ -22,7 +24,8 @@ import { Tasks } from '../composables/useTasks.js';
 import { getTaskViewPref, PREFS_EVENT } from '../composables/viewPrefs.js';
 import { isSubFolded } from '../composables/subtasks.js';
 import { buildWidgetData } from '../composables/widgetSnapshot.js';
-import { t } from '../i18n/index.js';
+import { getWeekStart } from '../composables/tasks-logic.js';
+import { t, currentLang } from '../i18n/index.js';
 
 /** 改动后等多久再算（毫秒）：连续改动只算一次 */
 const DEBOUNCE_MS = 1500;
@@ -131,13 +134,7 @@ export class WidgetExportService {
   async exportNow() {
     const fs = nodeModule('fs');
     if (!fs) return false;
-    const tasks = (await Tasks.loadAll()) || [];
-    const data = buildWidgetData(tasks, {
-      vault: this.plugin.app.vault.getName(),
-      hideDone: getTaskViewPref().hideDone,
-      isFolded: isSubFolded,
-      t
-    });
+    const data = await this.buildData();
     const body = JSON.stringify(data);
     if (body === this.lastBody) return false;
     const { dir, file } = this.paths();
@@ -149,6 +146,25 @@ export class WidgetExportService {
     this.lastBody = body;
     this.notifyHelper();
     return true;
+  }
+
+  /**
+   * 只算不写：按当前的任务、偏好和设置算出小组件数据（不碰任何文件）。
+   * 导出时用它；排查时也可以在测试库里直接调用，看小组件会拿到什么，而不覆盖主库写出的数据文件。
+   * @returns {Promise<Object>} buildWidgetData 的结果
+   */
+  async buildData() {
+    const tasks = (await Tasks.loadAll()) || [];
+    return buildWidgetData(tasks, {
+      vault: this.plugin.app.vault.getName(),
+      hideDone: getTaskViewPref().hideDone,
+      isFolded: isSubFolded,
+      t,
+      lang: currentLang(),
+      now: new Date(),
+      weekStart: getWeekStart(),
+      showLunar: this.plugin.settings.showLunar !== false
+    });
   }
 
   /** 请小组件程序刷新（没装就跳过；失败过一次后本次运行不再尝试） */
