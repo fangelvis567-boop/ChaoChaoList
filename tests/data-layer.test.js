@@ -5,13 +5,19 @@
 // 读写范围：只读仓库源码；所有「文件」都在内存里（tests/fake-vault.js），不碰任何真实笔记。
 import {
   initTasksApi, loadAll, loadByDate, listSubtasks, loadChecklistGroups, loadChecklists,
-  createTask, createChecklistTask, moveChecklistTask, updateTask, toggleTask
+  createTask, createChecklistTask, moveChecklistTask, updateTask, toggleTask, editTags
 } from '../src/core/api/tasks.js';
 import {
-  parseTasks, serializeBlock, collectLineNos, splitDescription, descPreview
+  parseTasks, serializeBlock, collectLineNos, splitDescription, descPreview,
+  timeText, spansDays, moveToDay, shiftSpanToDay, tagMapper, rewriteTagsInText, cleanTagName
 } from '../src/core/composables/tasks-logic.js';
+import { ReminderService } from '../src/core/services/reminder.js';
 import { buildCalendarTasks, subProgress, visibleSubtasks } from '../src/core/composables/subtasks.js';
 import { buildChecklistRows } from '../src/core/composables/checklistRows.js';
+import {
+  formToDraft, draftToForm, draftError, quickPick, isQuickPicked, switchTab, chipInfo,
+  addDays, daysBetween, nextHalfHour
+} from '../src/core/composables/dateDraft.js';
 import { makeVault } from './fake-vault.js';
 
 // ---------- 极简测试框架 ----------
@@ -333,7 +339,8 @@ test('清单页收起主任务：它的子任务不列出来，组名旁的任�
 test('在清单分组里新建任务时填的描述不再丢失', async () => {
   const v = vaultWith({ [LIST]: HEAD_LIST + '### 组A\n- [ ] 甲\n' });
   body(await createChecklistTask(LIST_KEY, '组A', { summary: '新任务', description: '说明一\n说明二' }));
-  ok(v.read(LIST).endsWith('- [ ] 新任务\n\t说明一\n\t说明二'), '文件结尾不符: ' + JSON.stringify(v.read(LIST)));
+  // 自用改版：新任务紧跟在「甲」后面（中间不再多一个空行），文件末尾原有的换行也保留
+  eq(v.read(LIST), HEAD_LIST + '### 组A\n- [ ] 甲\n- [ ] 新任务\n\t说明一\n\t说明二\n', '清单文件内容');
   const g = body(await loadChecklistGroups(LIST_KEY));
   eq(g.groups[0].tasks.map((t) => [t.summary, t.description]), [['甲', ''], ['新任务', '说明一\n说明二']], '读回');
 });
@@ -469,6 +476,224 @@ test('在各视图里直接点开子任务：按 guid 能取到这条子任务�
   const { Tasks } = await import('../src/core/composables/useTasks.js');
   const got = await Tasks.getDetail(sub.guid);
   eq([got && got.summary, got && got.parentTitle], ['子四', '父任务'], '取到的记录');
+});
+
+// ============================================================
+// 五、编辑窗口的日期面板（仿滴答清单，composables/dateDraft.js）
+// ============================================================
+
+test('日期面板：打开时从表单读出草稿，点确定换算回表单，五种形态都原样来回', () => {
+  const cases5 = [
+    [{ timeMode: 'allday', dueDate: '2026-11-10' }, { tab: 'date', date: '2026-11-10', start: '', end: '' }],
+    [{ timeMode: 'single', dueDate: '2026-11-10', dueTime: '09:00' }, { tab: 'date', date: '2026-11-10', start: '09:00', end: '' }],
+    [{ timeMode: 'range', dueDate: '2026-11-10', dueStart: '10:00', dueEnd: '16:00' }, { tab: 'date', date: '2026-11-10', start: '10:00', end: '16:00' }],
+    [{ timeMode: 'crossdate', startDate: '2026-11-10', dueDate: '2026-11-14' }, { tab: 'span', spanStart: '2026-11-10', spanEnd: '2026-11-14' }],
+    [{ timeMode: 'none', dueDate: '2026-11-10' }, { tab: 'date', date: '', start: '', end: '' }]
+  ];
+  for (const [form, want] of cases5) {
+    const d = formToDraft(form);
+    eq(Object.keys(want).map((k) => d[k]), Object.values(want), form.timeMode + ' 读出的草稿');
+    const back = draftToForm(d);
+    eq(back.timeMode, form.timeMode, form.timeMode + ' 换算回来的形态');
+  }
+  eq(draftToForm(formToDraft(cases5[2][0])), { startDate: '', dueDate: '2026-11-10', timeMode: 'range', dueTime: '10:00', dueStart: '10:00', dueEnd: '16:00' }, '时间段换算回来的字段');
+  eq(draftToForm(formToDraft(cases5[3][0])), { timeMode: 'crossdate', startDate: '2026-11-10', dueDate: '2026-11-14', dueTime: '', dueStart: '', dueEnd: '' }, '跨日期换算回来的字段');
+});
+
+test('日期面板：时间不填是全天、只填开始是单个时间；只有时间没日期的子任务保持原样', () => {
+  eq(draftToForm({ tab: 'date', date: '2026-11-10', start: '', end: '' }).timeMode, 'allday', '有日期没时间');
+  eq(draftToForm({ tab: 'date', date: '', start: '', end: '' }).timeMode, 'none', '都没填');
+  const timeOnly = draftToForm(formToDraft({ timeMode: 'single', dueDate: '', dueTime: '09:00' }));
+  eq([timeOnly.timeMode, timeOnly.dueDate, timeOnly.dueTime], ['single', '', '09:00'], '只有时间（如「09:00 查房」）');
+  eq(draftToForm({ tab: 'span', spanStart: '2026-11-10', spanEnd: '2026-11-10' }).timeMode, 'allday', '时间段的开始、结束是同一天 = 那天全天');
+});
+
+test('日期面板：结束早于开始时提示，不换算', () => {
+  eq(draftError({ tab: 'date', date: '2026-11-10', start: '10:00', end: '09:30' }), 'editor.endAfterStart', '结束时间早于开始');
+  eq(draftError({ tab: 'date', date: '2026-11-10', start: '10:00', end: '10:00' }), 'editor.endAfterStart', '结束时间等于开始');
+  eq(draftError({ tab: 'span', spanStart: '2026-11-14', spanEnd: '2026-11-10' }), 'editor.endDateAfterStart', '结束日期早于开始');
+  eq(draftError({ tab: 'date', date: '2026-11-10', start: '10:00', end: '' }), '', '只有开始时间没问题');
+});
+
+test('日期面板：快捷日期（今天、明天、7 天后、今晚）和按钮高亮，跨月跨年也对', () => {
+  const T = '2026-11-28';
+  eq(['today', 'tomorrow', 'week', 'tonight'].map((k) => quickPick(k, T)),
+    [{ date: T }, { date: '2026-11-29' }, { date: '2026-12-05' }, { date: T, start: '20:00', end: '' }], '各快捷日期');
+  eq([addDays('2026-12-31', 1), addDays('2026-03-01', -1), daysBetween('2026-11-10', '2026-11-14')], ['2027-01-01', '2026-02-28', 4], '加减天数');
+  const tonight = { tab: 'date', date: T, start: '20:00', end: '' };
+  eq(['today', 'tonight'].map((k) => isQuickPicked(k, tonight, T)), [false, true], '今天 20:00 只亮「今晚」');
+  eq(isQuickPicked('today', { tab: 'date', date: T, start: '09:00', end: '' }, T), true, '今天 09:00 亮「今天」');
+  eq([nextHalfHour(new Date(2026, 10, 11, 9, 12)), nextHalfHour(new Date(2026, 10, 11, 23, 50))], ['09:30', '23:30'], '添加时间的默认值');
+});
+
+test('日期面板：切到「时间段」从选中那天开始、默认到第二天；切回来日期还在', () => {
+  const span = switchTab({ tab: 'date', date: '2026-11-10', start: '09:00', end: '', spanStart: '', spanEnd: '' }, 'span', '2026-11-11');
+  eq([span.tab, span.spanStart, span.spanEnd], ['span', '2026-11-10', '2026-11-11'], '切到时间段');
+  eq(switchTab(span, 'date', '2026-11-11').date, '2026-11-10', '切回日期');
+  eq(switchTab({ tab: 'date', date: '', start: '', end: '', spanStart: '', spanEnd: '' }, 'span', '2026-11-11').spanStart, '2026-11-11', '没选日期就从今天开始');
+});
+
+test('日期胶囊：显示今天 / 明天、全天、时间段、跨日期、无日期', () => {
+  const T = '2026-11-11';
+  eq(chipInfo({ timeMode: 'allday', dueDate: T }, T), { kind: 'day', date: T, rel: 'today', time: '' }, '今天全天');
+  eq(chipInfo({ timeMode: 'range', dueDate: '2026-11-12', dueStart: '10:00', dueEnd: '16:00' }, T).time, '10:00–16:00', '时间段');
+  eq(chipInfo({ timeMode: 'single', dueDate: '2026-11-10', dueTime: '09:00' }, T).rel, 'yesterday', '昨天');
+  eq(chipInfo({ timeMode: 'crossdate', startDate: '2026-11-10', dueDate: '2026-11-14' }, T), { kind: 'span', from: '2026-11-10', to: '2026-11-14', fromTime: '', toTime: '' }, '跨日期');
+  eq(chipInfo({ timeMode: 'crossdate', startDate: '2026-11-12', dueDate: '2026-11-13', dueStart: '14:00', dueEnd: '10:00' }, T),
+    { kind: 'span', from: '2026-11-12', to: '2026-11-13', fromTime: '14:00', toTime: '10:00' }, '跨日期带时间');
+  eq(chipInfo({ timeMode: 'single', dueDate: '', dueTime: '09:00' }, T), { kind: 'time', time: '09:00' }, '只有时间');
+  eq(chipInfo({ timeMode: 'none', dueDate: T }, T), { kind: 'none' }, '无日期');
+});
+
+// ============================================================
+// 六、开始和截止是同一天时只写 📅（自用改版：原来只对子任务这样做）
+// ============================================================
+
+// 编辑窗口保存时传给数据层的日期字段（和 TaskEditorModal 的 buildDueAt 一样：没有开始日时 startAt 为 undefined）
+const ALL_DAY = (d) => ({ dueAt: d, dueEndAt: null, startAt: undefined, dueAllDay: true });
+
+test('清单里的主任务改日期：开始、截止是同一天时只写 📅，原来多出的同日 🛫 也去掉', async () => {
+  const v = vaultWith({ [LIST]: HEAD_LIST + '- [ ] 甲 📅 2026-11-12\n- [ ] 乙 📅 2026-11-12 🛫 2026-11-12\n- [ ] 丙\n' });
+  const task = async (name) => body(await loadChecklistGroups(LIST_KEY)).groups[0].tasks.find((t) => t.summary === name);
+  body(await updateTask((await task('甲')).guid, ALL_DAY(ms(2026, 11, 13))));
+  body(await updateTask((await task('乙')).guid, ALL_DAY(ms(2026, 11, 12))));
+  body(await updateTask((await task('丙')).guid, { dueAt: ms(2026, 11, 12, 9, 0), dueEndAt: null, startAt: undefined, dueAllDay: false }));
+  eq(v.read(LIST), HEAD_LIST + '- [ ] 甲 📅 2026-11-13\n- [ ] 乙 📅 2026-11-12\n- [ ] 09:00 丙 📅 2026-11-12\n', '清单文件内容');
+});
+
+test('收件箱和新建的清单任务同样只写 📅；跨日期照旧写 📅 和 🛫', async () => {
+  const INBOX = 'Inbox.md';
+  const v = vaultWith({ [INBOX]: HEAD_INBOX + '- [ ] 买书\n', [LIST]: HEAD_LIST + '### 组A\n- [ ] 甲\n' });
+  const book = body(await loadAll()).items.find((x) => x.summary === '买书');
+  body(await updateTask(book.guid, ALL_DAY(ms(2026, 11, 12))));
+  eq(v.read(INBOX), HEAD_INBOX + '- [ ] 买书 📅 2026-11-12\n', '收件箱');
+  body(await createChecklistTask(LIST_KEY, '组A', { summary: '乙', dueAt: ms(2026, 11, 12), startAt: ms(2026, 11, 12), dueAllDay: true }));
+  const jia = body(await loadChecklistGroups(LIST_KEY)).groups[0].tasks.find((t) => t.summary === '甲');
+  body(await updateTask(jia.guid, { dueAt: ms(2026, 11, 14), dueEndAt: null, startAt: ms(2026, 11, 12), dueAllDay: true }));
+  eq(v.read(LIST), HEAD_LIST + '### 组A\n- [ ] 甲 📅 2026-11-14 🛫 2026-11-12\n- [ ] 乙 📅 2026-11-12\n', '清单文件内容');
+});
+
+// ============================================================
+// 七、在清单分组末尾新建、移入任务：紧跟在这一组最后一行后面，不隔空行（自用改版）
+// ============================================================
+
+test('清单分组末尾新建任务：跳过组尾空行和文件结尾的换行，不再多出空行，也不贴到下一个标题上', async () => {
+  const v = vaultWith({ [LIST]: HEAD_LIST + '- [ ] 散\n\n### 组A\n- [ ] 甲\n\n### 组B\n- [ ] 乙\n\n### 组C\n\n### 组D\n' });
+  body(await createChecklistTask(LIST_KEY, '组A', { summary: '新A' }));
+  body(await createChecklistTask(LIST_KEY, '组B', { summary: '新B' }));
+  body(await createChecklistTask(LIST_KEY, '组C', { summary: '新C' }));
+  body(await createChecklistTask(LIST_KEY, '组D', { summary: '新D' }));
+  body(await createChecklistTask(LIST_KEY, '', { summary: '新散' }));
+  eq(v.read(LIST), HEAD_LIST
+    + '- [ ] 散\n- [ ] 新散\n\n### 组A\n- [ ] 甲\n- [ ] 新A\n\n### 组B\n- [ ] 乙\n- [ ] 新B\n\n### 组C\n- [ ] 新C\n\n### 组D\n- [ ] 新D\n',
+  '清单文件内容');
+  const g = body(await loadChecklistGroups(LIST_KEY));
+  eq(g.groups.map((x) => [x.title, x.tasks.map((t) => t.summary)]),
+    [['', ['散', '新散']], ['组A', ['甲', '新A']], ['组B', ['乙', '新B']], ['组C', ['新C']], ['组D', ['新D']]], '读回的分组');
+});
+
+test('把任务拖到最后一组：接在这一组最后一条后面，文件结尾的换行保留', async () => {
+  const v = vaultWith({ [LIST]: HEAD_LIST + '### 组A\n- [ ] 甲\n\t- [ ] 甲的子\n\n### 组B\n- [ ] 乙\n' });
+  const jia = body(await loadChecklistGroups(LIST_KEY)).groups[0].tasks[0];
+  body(await moveChecklistTask(LIST_KEY, jia.guid, '组B'));
+  eq(v.read(LIST), HEAD_LIST + '### 组A\n\n### 组B\n- [ ] 乙\n- [ ] 甲\n\t- [ ] 甲的子\n', '清单文件内容');
+});
+
+// ============================================================
+// 八、跨天又带时间的任务（如 11/12 14:00 到 11/13 10:00，自用改版）
+// ============================================================
+
+test('日期面板：时间段关掉全天后带上开始、结束时间；同一天的按那天的时间段处理', () => {
+  const form = { timeMode: 'crossdate', startDate: '2026-11-12', dueDate: '2026-11-13', dueStart: '14:00', dueTime: '14:00', dueEnd: '10:00' };
+  const d = formToDraft(form);
+  eq([d.tab, d.date, d.spanAllDay, d.spanStartTime, d.spanEndTime], ['span', '2026-11-12', false, '14:00', '10:00'], '读出的草稿');
+  eq(draftToForm(d), { timeMode: 'crossdate', startDate: '2026-11-12', dueDate: '2026-11-13', dueTime: '14:00', dueStart: '14:00', dueEnd: '10:00' }, '换算回来');
+  eq(draftError(d), '', '跨了天，结束时刻比开始早没关系');
+  eq(draftToForm(Object.assign({}, d, { spanAllDay: true })).dueStart, '', '开着全天就不带时间');
+  const same = { tab: 'span', spanStart: '2026-11-12', spanEnd: '2026-11-12', spanAllDay: false, spanStartTime: '14:00', spanEndTime: '16:00' };
+  eq([draftToForm(same).timeMode, draftToForm(Object.assign({}, same, { spanEndTime: '' })).timeMode], ['range', 'single'], '同一天：时间段 / 单个时间');
+  eq(draftError(Object.assign({}, same, { spanEndTime: '13:00' })), 'editor.endAfterStart', '同一天结束早于开始要提示');
+  const toSpan = switchTab({ tab: 'date', date: '2026-11-12', start: '09:00', end: '10:00', spanStart: '', spanEnd: '', spanAllDay: true, spanStartTime: '', spanEndTime: '' }, 'span', '2026-11-12');
+  eq([toSpan.spanAllDay, toSpan.spanStartTime, toSpan.spanEndTime], [false, '09:00', '10:00'], '「日期」填的时间带到时间段');
+  eq(switchTab(Object.assign({}, d, { start: '' }), 'date', '2026-11-12').start, '14:00', '时间段的开始时间带回「日期」');
+});
+
+test('跨天带时间的任务：日记里写成「14:00-10:00 … 📅 结束日」，读回的开始、结束时刻都对', async () => {
+  const J12 = '日记/2026-11-12.md';
+  const v = vaultWith({ [J12]: HEAD_DAILY + '- [ ] 出差\n- [ ] 其他\n' });
+  const t0 = body(await loadByDate('2026-11-12')).items.find((x) => x.summary === '出差');
+  body(await updateTask(t0.guid, { dueAt: ms(2026, 11, 13, 14, 0), dueEndAt: ms(2026, 11, 13, 10, 0), startAt: ms(2026, 11, 12, 14, 0), dueAllDay: false }));
+  eq(v.read(J12), HEAD_DAILY + '- [ ] 14:00-10:00 出差 📅 2026-11-13\n- [ ] 其他\n', '日记文件内容');
+  const t = body(await loadByDate('2026-11-12')).items.find((x) => x.summary === '出差');
+  eq([t.startAt, t.dueEndAt, t.dueAllDay, spansDays(t), timeText(t)], [ms(2026, 11, 12, 14, 0), ms(2026, 11, 13, 10, 0), false, true, '14:00-10:00'], '读回的记录');
+  body(await createTask({ summary: '新出差', dueAt: ms(2026, 11, 14, 9, 0), dueEndAt: ms(2026, 11, 14, 18, 0), startAt: ms(2026, 11, 12, 9, 0), dueAllDay: false }));
+  ok(v.read(J12).includes('- [ ] 09:00-18:00 新出差 📅 2026-11-14'), '新建的跨天带时间任务: ' + JSON.stringify(v.read(J12)));
+});
+
+test('跨天带时间的任务：清单里写成「14:00-10:00 … 📅 结束日 🛫 开始日」', async () => {
+  const v = vaultWith({ [LIST]: HEAD_LIST + '- [ ] 出差\n' });
+  const t0 = body(await loadChecklistGroups(LIST_KEY)).groups[0].tasks[0];
+  body(await updateTask(t0.guid, { dueAt: ms(2026, 11, 13, 14, 0), dueEndAt: ms(2026, 11, 13, 10, 0), startAt: ms(2026, 11, 12, 14, 0), dueAllDay: false }));
+  eq(v.read(LIST), HEAD_LIST + '- [ ] 14:00-10:00 出差 📅 2026-11-13 🛫 2026-11-12\n', '清单文件内容');
+  const t = body(await loadChecklistGroups(LIST_KEY)).groups[0].tasks[0];
+  eq([t.startAt, t.dueEndAt, timeText(t)], [ms(2026, 11, 12, 14, 0), ms(2026, 11, 13, 10, 0), '14:00-10:00'], '读回的记录');
+});
+
+test('跨天带时间的任务：在开始时刻提醒；拖动换日期时时分不变', () => {
+  const span = { guid: 'g', dueAt: ms(2026, 11, 13, 0, 0), startAt: ms(2026, 11, 12, 14, 0), dueEndAt: ms(2026, 11, 13, 10, 0), dueAllDay: false };
+  const svc = new ReminderService({ settings: {} });
+  eq(svc.notifyAtOf(span, '2026-11-12'), ms(2026, 11, 12, 14, 0), '提醒时刻 = 开始时刻');
+  eq(svc.notifyAtOf({ guid: 'h', dueAt: ms(2026, 11, 12, 9, 0), dueAllDay: false }, '2026-11-12'), ms(2026, 11, 12, 9, 0), '普通定时任务照旧');
+  eq(moveToDay(ms(2026, 11, 12, 14, 30), '2026-11-15'), ms(2026, 11, 15, 14, 30), '一端换日期');
+  eq(shiftSpanToDay(span, '2026-11-30'), { startAt: ms(2026, 11, 30, 14, 0), dueAt: ms(2026, 12, 1, 0, 0), dueEndAt: ms(2026, 12, 1, 10, 0) }, '整条挪到新的一天（跨月）');
+  eq(timeText({ dueAt: ms(2026, 11, 13, 0, 0), startAt: ms(2026, 11, 12, 14, 0), dueAllDay: false }), '14:00', '没有结束时间只显示开始时间');
+});
+
+// ============================================================
+// 九、标签管理：删除、改名、移进移出标签组（自用改版）
+// ============================================================
+
+test('改写标签的规则：只认 # 前面是空白或开头的；链接里的 # 不算；删掉时连前面的空格一起去掉', () => {
+  const del = tagMapper({ kind: 'delete', from: '财务' });
+  eq(rewriteTagsInText('报销 #财务 #财务2 [看#财务](https://x.com/#财务) 结尾', del),
+    '报销 #财务2 [看#财务](https://x.com/#财务) 结尾', '删除');
+  eq(rewriteTagsInText('#财务 开头', del), ' 开头', '开头的标签');
+  const ren = tagMapper({ kind: 'rename', from: '科研', to: '研究' });
+  eq(rewriteTagsInText('a #科研 #科研/论文 #科研论文', ren), 'a #研究 #研究/论文 #科研论文', '改名连同组里的子标签，不碰只是开头相同的');
+  eq(rewriteTagsInText('a #甲 #乙', tagMapper({ kind: 'rename', from: '甲', to: '乙' })), 'a #乙', '改名后重复的只留一个');
+  eq(rewriteTagsInText('a #科研/论文 #科研', tagMapper({ kind: 'dissolve', from: '科研' })), 'a #论文 #科研', '解散组：只去掉组名前缀');
+  const same = 'a #乙 #乙';
+  eq(rewriteTagsInText(same, tagMapper({ kind: 'delete', from: '丙' })) === same, true, '没有要改的原样返回');
+  eq(['#科研 论文', '/a//b/', '123', 'a!b', ''].map(cleanTagName), ['科研-论文', 'a/b', '', '', ''], '整理输入的标签名');
+});
+
+test('批量删除标签：日记、收件箱、清单里的主任务和子任务一起改；描述、链接、相似标签不动；预览不写文件', async () => {
+  const J12 = '日记/2026-11-12.md';
+  const INBOX = 'Inbox.md';
+  const daily = HEAD_DAILY + '- [ ] 写报告 #财务 #todo\n\t说明里提到 #财务 不改\n\t- [ ] 子任务 #财务\n- [ ] 其他 #财务2\n';
+  const inbox = HEAD_INBOX + '- [ ] 买书 [链接](https://x.com/#财务) #财务\n';
+  const list = HEAD_LIST + '- [ ] 甲 #财务/报销\n';
+  const v = vaultWith({ [J12]: daily, [INBOX]: inbox, [LIST]: list });
+  const op = { kind: 'delete', from: '财务' };
+  eq(body(await editTags(op, { dryRun: true })), { ok: true, tasks: 3, files: 2 }, '预览：3 条任务、2 篇笔记（组里的 #财务/报销 不算）');
+  eq([v.read(J12), v.read(INBOX)], [daily, inbox], '预览不改文件');
+  eq(body(await editTags(op)), { ok: true, tasks: 3, files: 2 }, '执行');
+  eq(v.read(J12), HEAD_DAILY + '- [ ] 写报告 #todo\n\t说明里提到 #财务 不改\n\t- [ ] 子任务\n- [ ] 其他 #财务2\n', '日记');
+  eq(v.read(INBOX), HEAD_INBOX + '- [ ] 买书 [链接](https://x.com/#财务)\n', '收件箱');
+  eq(v.read(LIST), list, '清单没有要改的');
+});
+
+test('标签组：移进组、给组改名、移出组、解散组，都按「#组/标签」改写任务行', async () => {
+  const v = vaultWith({ [LIST]: HEAD_LIST + '- [ ] 甲 #论文 📅 2026-11-12\n- [ ] 乙 #实验\n' });
+  const run = async (op) => body(await editTags(op));
+  await run({ kind: 'rename', from: '论文', to: '科研/论文' });
+  await run({ kind: 'rename', from: '实验', to: '科研/实验' });
+  eq(v.read(LIST), HEAD_LIST + '- [ ] 甲 #科研/论文 📅 2026-11-12\n- [ ] 乙 #科研/实验\n', '移进「科研」组');
+  await run({ kind: 'rename', from: '科研', to: '研究' });
+  eq(v.read(LIST), HEAD_LIST + '- [ ] 甲 #研究/论文 📅 2026-11-12\n- [ ] 乙 #研究/实验\n', '给组改名');
+  await run({ kind: 'rename', from: '研究/实验', to: '实验' });
+  await run({ kind: 'dissolve', from: '研究' });
+  eq(v.read(LIST), HEAD_LIST + '- [ ] 甲 #论文 📅 2026-11-12\n- [ ] 乙 #实验\n', '移出组、解散组');
 });
 
 // ---------- 逐个运行并汇总 ----------

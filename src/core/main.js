@@ -293,6 +293,28 @@ export default class DadaTodoPlugin extends Plugin {
     this.reloadOpenViews();
   }
 
+  // 自用改版：标签改名 / 删除 / 解散标签组之后，颜色设置跟着走：改了名的搬到新名字，删掉的清掉。
+  // 新名字原来就有自己的颜色时保留新名字的颜色。mapTag 来自 tasks-logic 的 tagMapper。
+  // 没有要搬的就不写 data.json；最后总会刷新已打开的面板（标签列表也要重新统计）
+  async remapTagColors(mapTag) {
+    const cur = this.settings.tagColors || {};
+    const next = {};
+    let changed = false;
+    for (const [k, v] of Object.entries(cur)) {
+      const nk = mapTag(k);
+      if (nk === k) { if (!(k in next)) next[k] = v; continue; }
+      changed = true;
+      const keepsOwn = (nk in cur) && mapTag(nk) === nk; // 新名字自己有颜色、而且不会被改掉
+      if (nk && !keepsOwn && !(nk in next)) next[nk] = v;
+    }
+    if (changed) {
+      this.settings.tagColors = next;
+      await this.saveSettings();
+      setTagColors(next);
+    }
+    this.reloadOpenViews();
+  }
+
   // 数据相关设置（每日笔记加载范围 / 收件箱路径）变更后调用：
   // 刷新所有已打开的面板，让新配置立即生效，无需手动重开面板
   reloadOpenViews() {

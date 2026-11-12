@@ -15,7 +15,7 @@
 import { Notice } from 'obsidian';
 import { t } from '../i18n/index.js';
 import { Tasks } from '../composables/useTasks.js';
-import { plainTitle, todayKey, timeText } from '../composables/tasks-logic.js';
+import { plainTitle, todayKey, timeText, spansDays } from '../composables/tasks-logic.js';
 import { openTaskInFile } from '../utils/openTaskInFile.js';
 
 const TICK_MS = 30 * 1000;             // 到期检查间隔
@@ -131,6 +131,9 @@ export class ReminderService {
       const d = new Date(due);
       return new Date(d.getFullYear(), d.getMonth(), d.getDate(), Math.min(23, Number(m[1])), Math.min(59, Number(m[2])), 0, 0).getTime();
     }
+    // 自用改版：跨天又带时间的任务（如 11/12 14:00 到 11/13 10:00）在开始时刻提醒。
+    // 它的 dueAt 落在结束那天（日记里的还是那天 0 点），原来按 dueAt 提醒会晚一天甚至在半夜响
+    if (spansDays(task) && Number.isFinite(Number(task.startAt))) return Number(task.startAt);
     return due;
   }
 

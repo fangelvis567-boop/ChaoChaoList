@@ -1,8 +1,8 @@
 import { PluginSettingTab, Notice, AbstractInputSuggest, TFolder, setIcon } from 'obsidian';
 import { t } from '../i18n/index.js';
-import { TagColorModal } from './modals.js';
-import { countInboxTasks, migrateInboxTasks, loadAll, loadChecklists, collectTags } from '../api/tasks.js';
-import { setColorScheme, setWeekStart, tagColorOf, usedTagColors, EXTRA_SCHEME_OPTIONS, isImeKey } from '../composables/tasks-logic.js';
+import { TagColorModal, ConfirmModal } from './modals.js';
+import { countInboxTasks, migrateInboxTasks, loadAll, loadChecklists, collectTags, editTags } from '../api/tasks.js';
+import { setColorScheme, setWeekStart, tagColorOf, usedTagColors, EXTRA_SCHEME_OPTIONS, isImeKey, tagMapper } from '../composables/tasks-logic.js';
 import { VIEW_MENU_ITEMS, DEFAULT_MENU_VIEWS, reorderViews } from '../composables/viewMenu.js';
 
 // （自用改版）原先这里有「自检新版」：每次打开设置页都联网读取作者仓库的版本号。
@@ -633,6 +633,34 @@ export class DadaTodoSettingTab extends PluginSettingTab {
                 onSave: (t2, color2) => plugin.setTagColor(t2, color2).then(build)
               }).open();
             };
+            // 自用改版：点「×」删除标签——从所有任务里去掉它（任务本身保留），先数一数会改多少条再确认
+            const confirmDelete = async (name) => {
+              const op = { kind: 'delete', from: name };
+              let plan;
+              try {
+                plan = (await editTags(op, { dryRun: true })).body;
+              } catch (e) {
+                new Notice(t('app.tagEditFail') + (e && e.message || e));
+                return;
+              }
+              if (!plan.tasks) { new Notice(t('app.tagEditNone', { tag: name })); return; }
+              new ConfirmModal(plugin.app, {
+                title: t('app.tagMenuDelete'),
+                message: t('app.tagConfirmDelete', { from: name, n: plan.tasks, files: plan.files }),
+                confirmText: t('common.confirm'),
+                danger: true,
+                onConfirm: async () => {
+                  try {
+                    const r = (await editTags(op)).body;
+                    await plugin.remapTagColors(tagMapper(op));
+                    new Notice(t('app.tagEditDone', { n: r.tasks }));
+                  } catch (e) {
+                    new Notice(t('app.tagEditFail') + (e && e.message || e));
+                  }
+                  build();
+                }
+              }).open();
+            };
             // 横向胶囊：标签名在前、颜色圆圈在后；已配置实色、未配置空心，点圆圈设置
             const renderGrid = (names) => {
               root.empty();
@@ -650,6 +678,11 @@ export class DadaTodoSettingTab extends PluginSettingTab {
                 if (typeof dot.setTooltip === 'function') dot.setTooltip(T('tagColorTip'));
                 else dot.setAttribute('aria-label', T('tagColorTip'));
                 dot.addEventListener('click', () => openPicker(name));
+                // 自用改版：删除标签
+                const del = chip.createSpan({ cls: 'dt-tagcolor-del', text: '×' });
+                if (typeof del.setTooltip === 'function') del.setTooltip(T('tagDeleteTip'));
+                else del.setAttribute('aria-label', T('tagDeleteTip'));
+                del.addEventListener('click', () => confirmDelete(name));
               }
             };
             // 全量任务标签（与列表页侧栏同口径，按名称排序）；collectTags 失败时兜底只显示已配置的

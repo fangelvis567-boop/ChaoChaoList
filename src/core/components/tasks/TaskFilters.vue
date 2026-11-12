@@ -8,26 +8,41 @@
 
     <template v-if="tagTree.groups.length || tagTree.loose.length">
       <div class="tk-filter-h">{{ $t('app.filterTag') }}</div>
+      <!-- 标签组（自用改版）：任务里写成 #组/标签 的，按组像文件夹一样列出；左边的箭头收起 / 展开（记在本机）。
+           每个标签组、标签都可以右键，或点鼠标停留时出现的「⋯」，打开管理菜单（改名、移到标签组、删除等，见 TasksApp 的 openTagMenu） -->
       <div v-for="g in tagTree.groups" :key="g.tag">
         <button class="tk-filter-item tk-filter-parent" type="button"
-                :class="{ on: tagFilter === g.tag }" @click="$emit('toggle-tag', g.tag)">
-          <i class="la" :class="tagFilter === g.tag ? 'la-folder-open' : 'la-folder'"></i>
+                :class="{ on: tagFilter === g.tag }" @click="$emit('toggle-tag', g.tag)"
+                @contextmenu.prevent="$emit('tag-menu', { tag: g.tag, kind: 'group' }, $event)">
+          <i class="la la-angle-right tk-taggroup-caret" :class="{ open: !isGroupFolded(g.tag) }"
+             :aria-label="$t('app.tagFoldTip')" @click.stop="toggleGroupFold(g.tag)"></i>
+          <i class="la" :class="isGroupFolded(g.tag) ? 'la-folder' : 'la-folder-open'"></i>
           <span>{{ g.label }}</span>
+          <i class="la la-ellipsis-h tk-tagmore" :aria-label="$t('app.tagMore')"
+             @click.stop="$emit('tag-menu', { tag: g.tag, kind: 'group' }, $event)"></i>
           <span class="tk-tagdot" :class="{ empty: !hexOf(g.tag) }" :style="hexOf(g.tag) ? { background: hexOf(g.tag) } : null" :title="$t('app.tagColorTip')"
                 @click.stop="$emit('edit-tag-color', g.tag)"></span>
           <span class="cnt">{{ g.n }}</span>
         </button>
-        <button v-for="c in g.items" :key="c.tag" class="tk-filter-item tk-filter-child" type="button"
-                :class="{ on: tagFilter === c.tag }" @click="$emit('toggle-tag', c.tag)">
-          <span>{{ c.label }}</span>
-          <span class="tk-tagdot" :class="{ empty: !hexOf(c.tag) }" :style="hexOf(c.tag) ? { background: hexOf(c.tag) } : null" :title="$t('app.tagColorTip')"
-                @click.stop="$emit('edit-tag-color', c.tag)"></span>
-          <span class="cnt">{{ c.n }}</span>
-        </button>
+        <template v-if="!isGroupFolded(g.tag)">
+          <button v-for="c in g.items" :key="c.tag" class="tk-filter-item tk-filter-child" type="button"
+                  :class="{ on: tagFilter === c.tag }" @click="$emit('toggle-tag', c.tag)"
+                  @contextmenu.prevent="$emit('tag-menu', { tag: c.tag, kind: 'child' }, $event)">
+            <span>{{ c.label }}</span>
+            <i class="la la-ellipsis-h tk-tagmore" :aria-label="$t('app.tagMore')"
+               @click.stop="$emit('tag-menu', { tag: c.tag, kind: 'child' }, $event)"></i>
+            <span class="tk-tagdot" :class="{ empty: !hexOf(c.tag) }" :style="hexOf(c.tag) ? { background: hexOf(c.tag) } : null" :title="$t('app.tagColorTip')"
+                  @click.stop="$emit('edit-tag-color', c.tag)"></span>
+            <span class="cnt">{{ c.n }}</span>
+          </button>
+        </template>
       </div>
       <button v-for="t in tagTree.loose" :key="t.tag" class="tk-filter-item" type="button"
-              :class="{ on: tagFilter === t.tag }" @click="$emit('toggle-tag', t.tag)">
+              :class="{ on: tagFilter === t.tag }" @click="$emit('toggle-tag', t.tag)"
+              @contextmenu.prevent="$emit('tag-menu', { tag: t.tag, kind: 'loose' }, $event)">
         <i class="la la-tag"></i><span>{{ t.label }}</span>
+        <i class="la la-ellipsis-h tk-tagmore" :aria-label="$t('app.tagMore')"
+           @click.stop="$emit('tag-menu', { tag: t.tag, kind: 'loose' }, $event)"></i>
         <span class="tk-tagdot" :class="{ empty: !hexOf(t.tag) }" :style="hexOf(t.tag) ? { background: hexOf(t.tag) } : null" :title="$t('app.tagColorTip')"
               @click.stop="$emit('edit-tag-color', t.tag)"></span>
         <span class="cnt">{{ t.n }}</span>
@@ -71,12 +86,36 @@
 // 纯展示组件：所有选择动作上抛，标签与清单的互斥等逻辑由容器处理。
 import { validHex } from '../../composables/tasks-logic.js';
 
+// 自用改版：收起的标签组记在本机（localStorage），和别的界面偏好一样不进 data.json
+const GROUP_FOLD_KEY = 'dada:tagGroupFolded';
+function loadFoldedGroups() {
+  try {
+    const v = JSON.parse(window.localStorage.getItem(GROUP_FOLD_KEY) || '[]');
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  } catch (e) {
+    return [];
+  }
+}
+
 export default {
   name: 'TaskFilters',
+  data() {
+    return { foldedGroups: loadFoldedGroups() };
+  },
   methods: {
     // 标签已配置颜色时返回 #hex（供圆点实色显示），否则空串（空心圆点）
     hexOf(tag) {
       return validHex(this.tagColors && this.tagColors[tag]);
+    },
+    // 标签组是否收起（默认展开）
+    isGroupFolded(tag) { return this.foldedGroups.includes(tag); },
+    // 点标签组左边的箭头：收起 / 展开，并记下来（顺带清掉已经不存在的组，比如改了名、解散了的）
+    toggleGroupFold(tag) {
+      const set = new Set(this.foldedGroups);
+      if (set.has(tag)) set.delete(tag); else set.add(tag);
+      const alive = new Set(((this.tagTree && this.tagTree.groups) || []).map((g) => g.tag));
+      this.foldedGroups = [...set].filter((g) => alive.has(g));
+      try { window.localStorage.setItem(GROUP_FOLD_KEY, JSON.stringify(this.foldedGroups)); } catch (e) { /* 存不了就只在这次有效 */ }
     }
   },
   props: {
@@ -142,6 +181,14 @@ export default {
 .tk-filter-item.on .cnt { color: #fff; opacity: 1; }
 .tk-filter-parent { font-weight: 600; }
 .tk-filter-child { padding-left: 24px; font-size: 13.5px; }
+/* 自用改版：标签组左边的收起 / 展开箭头（展开时转 90°） */
+.tk-filter-item i.tk-taggroup-caret { width: 12px; margin-right: -3px; font-size: 11px; opacity: .65; transition: transform .15s ease; }
+.tk-filter-item i.tk-taggroup-caret.open { transform: rotate(90deg); }
+.tk-filter-item i.tk-taggroup-caret:hover { opacity: 1; }
+/* 自用改版：标签管理菜单的「⋯」——鼠标停在这一行上才出现（选中的那行一直显示） */
+.tk-filter-item i.tk-tagmore { opacity: 0; width: 16px; border-radius: 4px; transition: opacity .12s ease, background .12s ease; }
+.tk-filter-item:hover i.tk-tagmore, .tk-filter-item.on i.tk-tagmore { opacity: .75; }
+.tk-filter-item i.tk-tagmore:hover { opacity: 1; background: var(--background-modifier-hover); }
 /* 清单行：名称按钮（选中加载任务）+ 打开文件图标 */
 .tk-filter-row { display: flex; align-items: center; gap: 4px; }
 .tk-filter-row .tk-filter-item { flex: 1 1 auto; min-width: 0; margin-bottom: 2px; }

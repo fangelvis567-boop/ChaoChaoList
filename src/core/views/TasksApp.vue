@@ -102,14 +102,16 @@ import {
   renderInlineHtml, plainInline,
   dateText, timeText, statusIcon, plainTitle, richSummaryNoTags, doneDay, spanDateText,
   colorOf, itemColor, lunarDayText, lunarTagText, holidayOf, weekdayLong,
-  getWeekStart, spansDays, tagColorOf, usedTagColors
+  getWeekStart, spansDays, tagColorOf, usedTagColors, moveToDay, shiftSpanToDay, tagMapper
 } from '../composables/tasks-logic.js';
 import TaskEditorModal from '../components/TaskEditorModal.vue';
 import TaskTopBar from '../components/TaskTopBar.vue';
 import WeekDayView from '../components/WeekDayView.vue';
 import TaskRow from '../components/tasks/TaskRow.vue';
 import { openTaskInFile } from '../utils/openTaskInFile.js';
-import { TagColorModal } from '../ui/modals.js';
+import { TagColorModal, TagNameModal } from '../ui/modals.js';
+// 自用改版：标签管理菜单用 Obsidian 自带的右键菜单和提示
+import { Menu, Notice } from 'obsidian';
 
 import ChecklistView from '../components/tasks/ChecklistView.vue';
 import TaskMonthView from '../components/tasks/TaskMonthView.vue';
@@ -580,6 +582,108 @@ export default {
         onSave: (t2, color) => { this.setTagColor(t2, color); }
       }).open();
     },
+    // ---------- 标签管理（自用改版）：列表左栏标签的右键 / 「⋯」菜单 ----------
+    // 标签写在任务行里（标签组 = 嵌套写法「#组/标签」），所以改名、删除、移进移出组都是批量改任务行（见 api/tasks.js 的 editTags）。
+    // info.kind：'group' 标签组 / 'child' 组里的标签 / 'loose' 不在组里的标签
+    openTagMenu(info, e) {
+      const { tag, kind } = info || {};
+      if (!tag) return;
+      const T = (k) => this.$t(k);
+      const menu = new Menu();
+      menu.addItem((i) => i.setTitle(T('app.tagMenuColor')).setIcon('palette').onClick(() => this.openTagColorModal(tag)));
+      if (kind === 'group') {
+        menu.addItem((i) => i.setTitle(T('app.tagMenuRenameGroup')).setIcon('pencil').onClick(() => this.promptRenameGroup(tag)));
+        menu.addItem((i) => i.setTitle(T('app.tagMenuDissolve')).setIcon('folder-minus').onClick(() => this.runTagEdit({ kind: 'dissolve', from: tag })));
+      } else {
+        menu.addItem((i) => i.setTitle(T('app.tagMenuRename')).setIcon('pencil').onClick(() => this.promptRenameTag(tag)));
+        menu.addItem((i) => i.setTitle(T('app.tagMenuMove')).setIcon('folder-input').onClick(() => this.promptMoveTag(tag)));
+        if (kind === 'child') {
+          menu.addItem((i) => i.setTitle(T('app.tagMenuMoveOut')).setIcon('folder-output')
+            .onClick(() => this.runTagEdit({ kind: 'rename', from: tag, to: this.tagLeaf(tag) }, 'app.tagMenuMoveOut')));
+        }
+        menu.addSeparator();
+        menu.addItem((i) => {
+          i.setTitle(T('app.tagMenuDelete')).setIcon('trash-2').onClick(() => this.runTagEdit({ kind: 'delete', from: tag }));
+          if (typeof i.setWarning === 'function') i.setWarning(true);
+        });
+      }
+      menu.showAtMouseEvent(e);
+    },
+    // 标签在组里时的「组名」和「自己的名字」：#科研/论文 → 科研、论文；不在组里的组名为空
+    tagParent(tag) { const i = tag.indexOf('/'); return i > 0 ? tag.slice(0, i) : ''; },
+    tagLeaf(tag) { const i = tag.indexOf('/'); return i > 0 ? tag.slice(i + 1) : tag; },
+    // 改名：组里的标签只改自己的名字，组不变
+    promptRenameTag(tag) {
+      const parent = this.tagParent(tag);
+      new TagNameModal(this.plugin.app, {
+        title: this.$t('app.tagRenameTitle', { tag }),
+        value: this.tagLeaf(tag),
+        placeholder: this.$t('app.tagNamePh'),
+        onSave: (name) => {
+          const to = parent ? parent + '/' + name : name;
+          if (to !== tag) this.runTagEdit({ kind: 'rename', from: tag, to });
+        }
+      }).open();
+    },
+    // 给标签组改名：组里所有标签的组名一起改（#科研/论文 → #研究/论文）
+    promptRenameGroup(group) {
+      new TagNameModal(this.plugin.app, {
+        title: this.$t('app.tagRenameGroupTitle', { tag: group }),
+        value: group,
+        placeholder: this.$t('app.tagGroupPh'),
+        onSave: (name) => { if (name !== group) this.runTagEdit({ kind: 'rename', from: group, to: name }, 'app.tagMenuRenameGroup'); }
+      }).open();
+    },
+    // 移到标签组：输入组名（新名字就是新建一个组），或点下面列出的已有组
+    promptMoveTag(tag) {
+      const parent = this.tagParent(tag);
+      const groups = ((this.tagTree && this.tagTree.groups) || []).map((g) => g.tag).filter((g) => g !== parent);
+      new TagNameModal(this.plugin.app, {
+        title: this.$t('app.tagMoveTitle', { tag }),
+        placeholder: this.$t('app.tagGroupPh'),
+        options: groups,
+        optionsLabel: groups.length ? this.$t('app.tagGroupExisting') : '',
+        onSave: (group) => {
+          const to = group + '/' + this.tagLeaf(tag);
+          if (to !== tag) this.runTagEdit({ kind: 'rename', from: tag, to }, 'app.tagMoveConfirmTitle');
+        }
+      }).open();
+    },
+    // 执行改标签：先数一数会改多少条任务、弹窗确认，再批量改；改完把颜色搬过去、更新左栏选中的标签，最后刷新。
+    // titleKey：确认弹窗的标题（移进移出组、给组改名也是改名操作，标题按实际操作写）；不传就按操作类型
+    async runTagEdit(op, titleKey) {
+      let plan;
+      try {
+        plan = await Tasks.editTags(op, { dryRun: true });
+      } catch (e) {
+        this.error = this.$t('app.tagEditFail') + (e && e.message || e);
+        return;
+      }
+      if (!plan.tasks) { new Notice(this.$t('app.tagEditNone', { tag: op.from })); return; }
+      const msgKey = { rename: 'app.tagConfirmRename', delete: 'app.tagConfirmDelete', dissolve: 'app.tagConfirmDissolve' }[op.kind];
+      const title = this.$t(titleKey || { rename: 'app.tagMenuRename', delete: 'app.tagMenuDelete', dissolve: 'app.tagMenuDissolve' }[op.kind]);
+      new ConfirmModal(this.plugin.app, {
+        title,
+        message: this.$t(msgKey, { from: op.from, to: op.to || '', n: plan.tasks, files: plan.files }),
+        confirmText: this.$t('common.confirm'),
+        danger: op.kind === 'delete',
+        onConfirm: async () => {
+          try {
+            const r = await Tasks.editTags(op);
+            const map = tagMapper(op);
+            // 左栏正选着的标签跟着改名；被删掉、或解散了的组，就取消选中
+            if (this.tagFilter) {
+              this.tagFilter = (op.kind === 'dissolve' && this.tagFilter === op.from) ? '' : (map(this.tagFilter) || '');
+            }
+            await this.plugin.remapTagColors(map);
+            await this.reload();
+            new Notice(this.$t('app.tagEditDone', { n: r.tasks }));
+          } catch (e) {
+            this.error = this.$t('app.tagEditFail') + (e && e.message || e);
+          }
+        }
+      }).open();
+    },
     // 日程视图：左侧时间点 / 右侧卡片，沿用时间轴配色；文字色走 itemColor（皮卡丘近黑/焦棕深底色卡走亮字、其余亮底深字，紫罗兰走亮色字）
     agendaCard(t) { const c = this.colorOf(t); return { background: c.bg, color: itemColor(t).color, '--ag-bar': c.fg }; },
     // 日程视图：已延期 / 更远 分组折叠切换
@@ -612,11 +716,9 @@ export default {
     agendaWhen(task, kind) {
       if (!task.dueAt) return '';
       const d = new Date(task.dueAt);
-      let hm = task.dueAllDay ? '' : pad(d.getHours()) + ':' + pad(d.getMinutes());
-      if (!task.dueAllDay && task.dueEndAt && Number(task.dueEndAt) > Number(task.dueAt)) {
-        const e = new Date(task.dueEndAt);
-        hm += '-' + pad(e.getHours()) + ':' + pad(e.getMinutes());
-      }
+      // 自用改版：时间文字统一用 timeText（规则同列表视图）；跨天又带时间的任务显示「开始时间-结束时间」，
+      // 原来取 dueAt 的时刻，日记里的这种任务会显示成 00:00
+      const hm = task.dueAllDay ? '' : timeText(task);
       if (kind === 'day') return task.dueAllDay ? this.$t('app.allDay') : hm;
       const md = (d.getMonth() + 1) + '/' + d.getDate();
       return task.dueAllDay ? md : md + '\n' + hm;
@@ -687,11 +789,16 @@ export default {
     resizeSpan(t, which, newKey, isSpan, origDays, anchorMs) {
       const ms = new Date(newKey + 'T00:00:00').getTime();
       if (isSpan) {
-        // 跨日期：边缘拉伸——拖左柄改开始日（钳制不越过后端），拖右柄改结束日（钳制不越过前端）
+        // 跨日期：边缘拉伸——拖左柄改开始日（钳制不越过结束日），拖右柄改结束日（钳制不越过开始日）。
+        // 自用改版：只换日期、时分不变（moveToDay），带时间的跨天任务不再被抹成 0 点；结束时间跟着结束日走
         if (which === 'start') {
-          t.startAt = Math.min(ms, Number(t.dueAt));
+          const endKey = ymd(new Date(Number(t.dueAt)));
+          t.startAt = moveToDay(t.startAt, newKey > endKey ? endKey : newKey);
         } else {
-          t.dueAt = Math.max(ms, Number(t.startAt));
+          const startKey = ymd(new Date(Number(t.startAt)));
+          const key = newKey < startKey ? startKey : newKey;
+          t.dueAt = moveToDay(t.dueAt, key);
+          if (t.dueEndAt) t.dueEndAt = moveToDay(t.dueEndAt, key);
         }
       } else if (which === 'start') {
         t.startAt = ms;
@@ -701,13 +808,15 @@ export default {
         t.dueAt = ms;
       }
     },
-    // 跨日期横跨条：把调整后的开始 / 结束日期落盘（保持全天 + 跨天开始日）
+    // 跨日期横跨条：把调整后的开始 / 结束日期落盘（保持跨天开始日）。
+    // 自用改版：带时间的跨天任务保留开始、结束时间（原来一律改成全天）
     async resizeSpanCommit(t) {
+      const timed = !t.dueAllDay && spansDays(t);
       try {
-        await Tasks.updateTask(t.guid, {
+        await Tasks.updateTask(t.guid, Object.assign({
           summary: t.summary, description: t.description,
-          dueAt: t.dueAt, startAt: t.startAt, dueAllDay: true
-        });
+          dueAt: t.dueAt, startAt: t.startAt, dueAllDay: !timed
+        }, timed ? { dueEndAt: t.dueEndAt || null } : {}));
         this.onSaved();
       } catch (err) {
         this.setError(this.$t('app.resizeFail') + (err && err.message || err));
@@ -781,8 +890,12 @@ export default {
         dueAt = new Date(dayKey + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':00').getTime();
       }
       const payload = { summary: t.summary, description: t.description, priority: t.priority, dueAt, dueAllDay: allDay };
-      // 跨日期全天任务：落点作为开始日，结束日按原跨度顺延，保持原天数不变
-      if (allDay && t.startAt && t.startAt !== t.dueAt) {
+      // 自用改版：跨天又带时间的任务：整条挪到落点那天开始，起止相隔几天、开始和结束时间都不变
+      // （原来按单个时间任务处理，会缩成落点那一天）
+      if (!allDay && spansDays(t)) {
+        Object.assign(payload, shiftSpanToDay(t, dayKey));
+      } else if (allDay && t.startAt && t.startAt !== t.dueAt) {
+        // 跨日期全天任务：落点作为开始日，结束日按原跨度顺延，保持原天数不变
         const day = 86400000;
         const spanDays = Math.max(0, Math.round((Number(t.dueAt) - Number(t.startAt)) / day));
         payload.startAt = dueAt;                  // 落点 = 开始日
@@ -796,7 +909,8 @@ export default {
       // 用「新开始 − 原开始」的真实时间差整体平移 dueEndAt：既保留结束的本地时/分，
       // 也兼容跨午夜。原实现用 Math.floor(dueAt/60000)%(24*60) 取的是 UTC 日内分钟，
       // 在非 UTC 时区会把结束时间整体偏移一个时区差，导致结束时刻错乱。
-      if (!allDay && t.dueEndAt && !t.dueAllDay) {
+      // （跨天又带时间的任务上面已经整体平移过，这里跳过）
+      if (!allDay && t.dueEndAt && !t.dueAllDay && !spansDays(t)) {
         const delta = dueAt - new Date(t.dueAt).getTime();
         payload.dueEndAt = new Date(new Date(t.dueEndAt).getTime() + delta).getTime();
       }

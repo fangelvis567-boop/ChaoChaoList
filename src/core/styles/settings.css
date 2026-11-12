@@ -214,3 +214,15 @@
 }
 
 
+/* 自用改版：标签胶囊末尾的「×」——删除这个标签（从所有任务里去掉，先弹窗确认） */
+.dt-tagcolor-chip .dt-tagcolor-del {
+  flex: none;
+  margin-left: -2px;
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.dt-tagcolor-chip .dt-tagcolor-del:hover { color: var(--text-error); background: var(--background-modifier-hover); }

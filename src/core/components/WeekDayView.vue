@@ -43,7 +43,7 @@ import { Tasks } from '../composables/useTasks.js';
 import { openCtxMenu } from '../composables/useTaskCtxMenu.js';
 import {
   colorOf, itemColor, lunarDayText, lunarTagText, holidayOf,
-  statusIcon, timeText, scheduledText, richSummaryNoTags, plainInline, weekdayShort, spansDays
+  statusIcon, timeText, scheduledText, richSummaryNoTags, plainInline, weekdayShort, spansDays, shiftSpanToDay
 } from '../composables/tasks-logic.js';
 
 const pad = (n) => (n < 10 ? '0' + n : '' + n);
@@ -479,6 +479,10 @@ export default {
         dueAt: isSpan ? base + Math.max(0, Math.round((Number(t.dueAt) - Number(t.startAt)) / day)) * day : base,
         dueAllDay: true
       };
+      // 自用改版：跨天又带时间的长条整条挪到落点那天开始，起止相隔几天、开始和结束时间都不变（原来会被改成全天）
+      if (!t.dueAllDay && spansDays(t)) {
+        Object.assign(payload, shiftSpanToDay(t, dayKey), { dueAllDay: false });
+      }
       try {
         if (copy) await Tasks.createTask(payload);
         else await Tasks.updateTask(t.guid, payload);

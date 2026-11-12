@@ -3,7 +3,7 @@
 import { t } from '../i18n/index.js';
 import {
   loadAll, loadChecklists, loadByList, loadByDate, getDetail,
-  loadChecklistGroups, collectTags,
+  loadChecklistGroups, collectTags, editTags,
   createTask, createChecklistTask, updateTask, deleteTask, toggleTask, setChecklistStatus, createSubtask, listSubtasks,
   moveChecklistTask
 } from '../api/tasks.js';
@@ -46,6 +46,8 @@ const api = {
   async loadChecklists() { return (await unwrap(loadChecklists())).items || []; },
   async loadByList(listKey) { return (await unwrap(loadByList(listKey))).items || []; },
   async loadChecklistGroups(listKey) { return await unwrap(loadChecklistGroups(listKey)); },
+  // 自用改版：批量改标签（删除、改名、移进移出标签组）；opts.dryRun 只数会改多少条。返回 { tasks, files }
+  async editTags(op, opts) { return await unwrap(editTags(op, opts)); },
   async loadByDate(dateKey) { return (await unwrap(loadByDate(dateKey))).items || []; },
   async getDetail(guid) {
     const items = await this.loadByDate(String(guid || '').split('#')[0]);

@@ -1,6 +1,7 @@
 <template>
-  <div class="tk-dp" :class="{ 'is-disabled': disabled }">
-    <div class="tk-dp__control">
+  <div class="tk-dp" :class="{ 'is-disabled': disabled, 'is-inline': inline }">
+    <!-- 自用改版：inline 时不要输入框，日历直接摊开（编辑窗口的日期面板里用） -->
+    <div v-if="!inline" class="tk-dp__control">
       <input
         ref="input"
         class="tk-dp__input"
@@ -15,7 +16,7 @@
       />
     </div>
     <transition name="tk-fade">
-      <div v-if="open && !disabled" class="tk-dp__panel" @mousedown.prevent @click.stop>
+      <div v-if="(inline || open) && !disabled" class="tk-dp__panel" @mousedown.prevent @click.stop>
         <div class="tk-dp__header">
           <button type="button" class="tk-dp__nav" :aria-label="$t('app.prevYearTitle')" aria-label-position="bottom" @mousedown.stop.prevent="stepYear(-1)">«</button>
           <button type="button" class="tk-dp__nav" :aria-label="$t('app.prevMonthTitle')" aria-label-position="bottom" @mousedown.stop.prevent="stepMonth(-1)">‹</button>
@@ -42,7 +43,7 @@
             @mousedown.stop.prevent="select(cell)"
           >{{ cell.day }}</div>
         </div>
-        <div class="tk-dp__footer">
+        <div v-if="!inline" class="tk-dp__footer">
           <button type="button" class="tk-dp__today" :disabled="isDisabledYmd(todayYmd)" @mousedown.stop.prevent="selectToday">
             {{ $t('app.backToToday') }}
           </button>
@@ -71,6 +72,8 @@ export default {
     disabled: { type: Boolean, default: false },
     min: { type: String, default: '' },
     max: { type: String, default: '' },
+    // 自用改版：直接摊开日历（没有输入框，选了日期也不收起），给编辑窗口的日期面板用
+    inline: { type: Boolean, default: false },
   },
   emits: ['update:modelValue', 'change'],
   data() {
@@ -120,8 +123,22 @@ export default {
       return out;
     },
   },
+  // 自用改版：摊开的日历一出来就停在选中日期（没选就今天）所在的月份；
+  // 外面改了日期（比如点了「7 天后」跨到下个月），也跟着翻到那个月
+  created() { if (this.inline) this.syncView(); },
+  watch: {
+    modelValue() { if (this.inline) this.syncView(); },
+  },
   beforeUnmount() { this.removeOutside(); },
   methods: {
+    // 让日历显示选中日期所在的月份；已经在显示这个月就不动（免得翻到别的月看时被拉回来）
+    syncView() {
+      const d = this.parseYmd(this.modelValue) || (this.viewYear ? null : new Date());
+      if (!d) return;
+      if (d.getFullYear() === this.viewYear && d.getMonth() === this.viewMonth) return;
+      this.viewYear = d.getFullYear();
+      this.viewMonth = d.getMonth();
+    },
     // i18next 默认把数组 key 当字符串返回，这里统一取回数组（兼容 returnObjects 与逗号拼接两种返回）
     weekdayList(key) {
       const raw = this.$t(key, { returnObjects: true });
@@ -199,7 +216,7 @@ export default {
     selectYmd(ymd) {
       if (!ymd || this.isDisabledYmd(ymd)) return;
       this.commitValue(ymd);
-      this.close();
+      if (!this.inline) this.close();
     },
     select(cell) {
       this.selectYmd(cell.ymd);
@@ -259,6 +276,15 @@ export default {
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   user-select: none;
+}
+/* 自用改版：直接摊开的日历——跟着外框走，不再是浮层 */
+.tk-dp.is-inline .tk-dp__panel {
+  position: static;
+  width: auto;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
 }
 .tk-dp__header {
   display: flex;

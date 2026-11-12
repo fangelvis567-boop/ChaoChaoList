@@ -63,62 +63,20 @@
                         :file="contextFile" :placeholder="$t('editor.descPh')" :edit-tip="$t('editor.descEditTip')"
                         :disabled="saving" @mode="descMode = $event" />
       </div>
-      <!-- 时间形态：单时间 / 时间段 / 全天 / 跨日期 / 无日期；各形态仅展示所需字段 -->
+      <!-- 日期和时间（自用改版，仿滴答清单）：这里只放一个日期胶囊，显示当前设的日期、时间；
+           点开是日期面板（DateTimePanel：日期 / 时间段两个标签、快捷日期、日历、时间）。
+           面板改的是草稿，点「确定」才填回下面的表单，最后仍由「保存」写进笔记 -->
       <div class="tk-time-block">
-        <div class="tk-tm-tabs">
-          <button type="button" class="tk-tm-tab" :class="{ active: form.timeMode === 'single' }" @click="setTimeMode('single')">{{ $t('editor.timeSingle') }}</button>
-          <button type="button" class="tk-tm-tab" :class="{ active: form.timeMode === 'range' }" @click="setTimeMode('range')">{{ $t('editor.timeRange') }}</button>
-          <button type="button" class="tk-tm-tab" :class="{ active: form.timeMode === 'allday' }" @click="setTimeMode('allday')">{{ $t('app.allDay') }}</button>
-          <button type="button" class="tk-tm-tab" :class="{ active: form.timeMode === 'crossdate' }" @click="setTimeMode('crossdate')">{{ $t('editor.crossDate') }}</button>
-          <button type="button" class="tk-tm-tab" :class="{ active: form.timeMode === 'none' }" @click="setTimeMode('none')">{{ $t('editor.noDate') }}</button>
-        </div>
-
-        <!-- 单时间：日期 + 时间 -->
-        <template v-if="form.timeMode === 'single'">
-          <label class="tk-field">
-            <span>{{ $t('editor.date') }}</span>
-            <DatePicker v-model="form.dueDate" :disabled="saving" @change="onDateChange" />
-          </label>
-          <div class="tk-time-row">
-            <TimePicker v-model="form.dueTime" :disabled="saving" :step="timeStep" placeholder="HH:MM" />
-          </div>
-        </template>
-
-        <!-- 时间段：日期 + 开始时间 + 结束时间 -->
-        <template v-else-if="form.timeMode === 'range'">
-          <label class="tk-field">
-            <span>{{ $t('editor.date') }}</span>
-            <DatePicker v-model="form.dueDate" :disabled="saving" @change="onDateChange" />
-          </label>
-          <div class="tk-time-row">
-            <TimePicker v-model="form.dueStart" :disabled="saving" :max="form.dueEnd" :step="timeStep" placeholder="开始" />
-            <span class="tk-tm-sep">—</span>
-            <TimePicker v-model="form.dueEnd" :disabled="saving" :min="form.dueStart" :step="timeStep" placeholder="结束" />
-          </div>
-        </template>
-
-        <!-- 全天：日期 -->
-        <template v-else-if="form.timeMode === 'allday'">
-          <label class="tk-field">
-            <span>{{ $t('editor.date') }}</span>
-            <DatePicker v-model="form.dueDate" :disabled="saving" @change="onDateChange" />
-          </label>
-        </template>
-
-        <!-- 跨日期：开始日期 + 结束日期 -->
-        <template v-else-if="form.timeMode === 'crossdate'">
-          <label class="tk-field">
-            <span>{{ $t('editor.startDate') }}</span>
-            <DatePicker v-model="form.startDate" :disabled="saving" @change="ensureDefaultTimes" />
-          </label>
-          <label class="tk-field">
-            <span>{{ $t('editor.endDate') }}</span>
-            <DatePicker v-model="form.dueDate" :disabled="saving" @change="ensureDefaultTimes" />
-          </label>
-        </template>
-
-        <!-- 无日期（自用改版）：不设日期和时间；用一行字说明保存后这条任务去哪 -->
-        <div v-else-if="form.timeMode === 'none'" class="tk-nodate-hint">{{ noDateHint }}</div>
+        <button type="button" class="tk-date-chip" :class="{ 'is-open': datePanelOpen, 'is-empty': dateChip.kind === 'none' }"
+                :disabled="saving" @click="toggleDatePanel">
+          <i class="la la-calendar"></i>
+          <span class="tk-date-chip-text">{{ dateChipText }}</span>
+          <i class="la la-angle-down tk-date-chip-caret"></i>
+        </button>
+        <!-- 无日期：用一行字说明保存后这条任务去哪 -->
+        <div v-if="form.timeMode === 'none' && !datePanelOpen" class="tk-nodate-hint">{{ noDateHint }}</div>
+        <date-time-panel v-if="datePanelOpen" ref="datePanel" :form="form" :today="todayYmd" :time-step="timeStep"
+                         @confirm="applyDatePanel" @clear="clearDatePanel" @cancel="datePanelOpen = false" />
       </div>
       <!-- 计划日期（⏳ scheduled）：设置「启用计划时间」开启时显示（issue #13） -->
       <label v-if="showScheduled" class="tk-field">
@@ -173,13 +131,14 @@
 <script>
 import { TFile } from 'obsidian';
 import { Tasks } from '../composables/useTasks.js';
-import { splitSummary, composeSummary, sanitizeTag, isImeKey, PRIORITY_ICON, priorityToLevel, levelToPriorityEmoji, withAlpha, validHex, INBOX_KEY } from '../composables/tasks-logic.js';
+import { splitSummary, composeSummary, sanitizeTag, isImeKey, PRIORITY_ICON, priorityToLevel, levelToPriorityEmoji, withAlpha, validHex, INBOX_KEY, weekdayLong } from '../composables/tasks-logic.js';
+import { chipInfo } from '../composables/dateDraft.js';
+import DateTimePanel from './DateTimePanel.vue';
 import { LinkFormModal, ConfirmModal } from '../ui/modals.js';
 import { openTaskInFile } from '../utils/openTaskInFile.js';
 import { taskFilePath } from '../api/tasks.js';
 import { VueModal } from '../ui/VueModal.js';
 import SubtaskList from './SubtaskList.vue';
-import TimePicker from './TimePicker.vue';
 import DatePicker from './DatePicker.vue';
 import MarkdownField from './MarkdownField.vue';
 
@@ -188,7 +147,7 @@ function ymd(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + p
 
 export default {
   name: 'TaskEditorModal',
-  components: { SubtaskList, TimePicker, DatePicker, MarkdownField },
+  components: { SubtaskList, DatePicker, MarkdownField, DateTimePanel },
   props: {
     open: { type: Boolean, default: false },
     task: { type: Object, default: null },
@@ -221,7 +180,9 @@ export default {
       sugIdx: -1,
       sugOpen: false,
       // 描述框的形态（由 MarkdownField 告知）：'embed' 内嵌 Obsidian 编辑器 / 'plain' 普通文本框
-      descMode: ''
+      descMode: '',
+      // 自用改版：日期面板是否展开
+      datePanelOpen: false
     };
   },
   computed: {
@@ -238,6 +199,27 @@ export default {
     isCrossDate() { return this.form.timeMode === 'crossdate'; },
     // 无日期（自用改版）：保存时不带日期和时间
     isNoDate() { return this.form.timeMode === 'none'; },
+    // 今天，YYYY-MM-DD（日期胶囊判断「今天 / 明天」、面板的快捷日期都用它）
+    todayYmd() { return ymd(new Date()); },
+    // 日期胶囊要显示的内容（换算规则见 composables/dateDraft.js 的 chipInfo）
+    dateChip() { return chipInfo(this.form, this.todayYmd); },
+    // 日期胶囊上的文字，如「今天 11/11 周三 · 09:00–10:00」「11/10 周二 – 11/14 周六」「无日期」
+    dateChipText() {
+      const c = this.dateChip;
+      const allDay = this.$t('app.allDay');
+      if (c.kind === 'span') {
+        // 跨日期带时间的显示成「11/12 周四 14:00 – 11/13 周五 10:00」
+        const from = this.chipDate(c.from) + (c.fromTime ? ' ' + c.fromTime : '');
+        const to = this.chipDate(c.to) + (c.toTime ? ' ' + c.toTime : '');
+        return from + ' – ' + to;
+      }
+      if (c.kind === 'time') return this.$t('editor.noDate') + ' · ' + c.time;
+      if (c.kind === 'day') {
+        const rel = c.rel ? this.$t('editor.rel_' + c.rel) + ' ' : '';
+        return rel + this.chipDate(c.date) + ' · ' + (c.time || allDay);
+      }
+      return this.$t('editor.noDate');
+    },
     // 「无日期」下的提示：说明保存后这条任务去哪。
     // 日记里的主任务，日期就是日记的文件名，去掉日期 = 搬到收件箱；
     // 收件箱、清单里的任务和子任务，日期写在行内，去掉后任务留在原处。
@@ -295,8 +277,9 @@ export default {
       return {
         guid: '', title: '', description: '', links: [], tags: [],
         dueDate: this.defaultDate || '', dueTime: this.defaultTime || '',
-        // 没有预设日期的新任务（收件箱、清单里新建）默认停在「无日期」（自用改版）
-        timeMode: this.defaultDate ? 'single' : 'none', dueStart: this.defaultTime || '', dueEnd: '', startDate: '',
+        // 没有预设日期的新任务（收件箱、清单里新建）默认停在「无日期」（自用改版）；
+        // 有预设日期的：带了时间（如双击时间轴空白格）是单个时间，没带就是全天——和滴答清单一样，时间要用再加
+        timeMode: this.defaultDate ? (this.defaultTime ? 'single' : 'allday') : 'none', dueStart: this.defaultTime || '', dueEnd: '', startDate: '',
         scheduledDate: '',
         remind: true, completed: false, cancelled: false, cancelledAt: '',
         priority: this.defaultPriority || 'none'
@@ -308,6 +291,7 @@ export default {
       this.linkEditIndex = -1;
       this.addingTag = false;
       this.tagDraft = '';
+      this.datePanelOpen = false;
       this.form = this.editing ? this.taskToForm(this.task) : this.blank();
       // 新建且未指定时间时，带出下一个准点/半点（结束=开始+30 分）
       this.ensureDefaultTimes();
@@ -324,6 +308,16 @@ export default {
         timeMode = 'crossdate';
         startDate = ymd(new Date(startMs));
         dueDate = ymd(sd);
+        // 自用改版：跨天又带时间的（如 11/12 14:00 到 11/13 10:00）：开始时间在开始那天，结束时间在结束那天
+        if (!t.dueAllDay) {
+          const s = new Date(startMs);
+          dueStart = pad(s.getHours()) + ':' + pad(s.getMinutes());
+          dueTime = dueStart;
+          if (t.dueEndAt) {
+            const e = new Date(t.dueEndAt);
+            dueEnd = pad(e.getHours()) + ':' + pad(e.getMinutes());
+          }
+        }
       } else if (sd) {
         dueDate = ymd(sd);
         if (t.dueAllDay) {
@@ -410,16 +404,31 @@ export default {
         this.form.dueTime = this.form.dueStart || this.nextHalfHour().start;
       }
     },
-    onDateChange() { this.ensureDefaultTimes(); },
-    // 全天 / 单时间 / 时间段 切换：同一单选项，切换时按模式补默认值
-    setTimeMode(mode) {
-      if (this.form.timeMode === mode) return;
-      // 从「无日期」切到要日期的形态、而日期还空着时，先填上今天（或当前视图的那一天），
-      // 免得不选日期就保存、又存成一条没日期的任务（自用改版）。
-      // 原来就有日期的任务切到「无日期」时，表单里的日期并不清空，没保存之前切回来日期还在。
-      if (this.form.timeMode === 'none' && !this.form.dueDate) this.form.dueDate = this.defaultDate || ymd(new Date());
-      this.form.timeMode = mode;
-      this.ensureDefaultTimes();
+    // ---------- 日期胶囊和日期面板（自用改版，仿滴答清单） ----------
+    // 胶囊上的日期：「11/11 周三」；不是今年的，前面加年份（「2027/1/5 周二」）
+    chipDate(ymdStr) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymdStr || '');
+      if (!m) return ymdStr || '';
+      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+      const md = (d.getMonth() + 1) + '/' + d.getDate();
+      const text = d.getFullYear() === new Date().getFullYear() ? md : d.getFullYear() + '/' + md;
+      const wd = weekdayLong(d);
+      return wd ? text + ' ' + wd : text;
+    },
+    // 点胶囊：展开 / 收起日期面板（收起 = 不要面板里改的）
+    toggleDatePanel() { this.datePanelOpen = !this.datePanelOpen; },
+    // 面板点了「确定」：把面板换算好的字段填回表单
+    applyDatePanel(patch) {
+      Object.assign(this.form, patch);
+      this.datePanelOpen = false;
+      this.error = '';
+    },
+    // 面板点了「清除」：不要日期，和原来的「无日期」一样（保存时日期、时间都去掉）。
+    // 表单里原来的日期不清空，再打开面板时从「什么都没选」开始
+    clearDatePanel() {
+      this.form.timeMode = 'none';
+      this.datePanelOpen = false;
+      this.error = '';
     },
     // 构造时间戳：单时间只给开始；时间段额外给结束；全天只给当日 00:00
     buildDueAt() {
@@ -431,6 +440,18 @@ export default {
       if (this.isCrossDate) {
         const end = this.form.dueDate;
         const s = this.form.startDate;
+        // 自用改版：跨天又带时间：开始 = 开始那天 + 开始时间，结束 = 结束那天 + 结束时间（结束时间可不填）。
+        // dueAt 取「结束那天 + 开始时间」：清单、收件箱里的任务，数据层从 dueAt 取行首写的开始时间
+        const st = this.form.dueStart;
+        if (st && s && end && s < end) {
+          const et = this.form.dueEnd;
+          return {
+            dueAt: new Date(end + 'T' + st).getTime(),
+            dueEndAt: et ? new Date(end + 'T' + et).getTime() : null,
+            startAt: new Date(s + 'T' + st).getTime(),
+            dueAllDay: false
+          };
+        }
         const dueAt = end ? new Date(end + 'T00:00:00').getTime() : null;
         // 开始日不得晚于结束日，否则回退为与结束日相同的单日
         const startAt = (s && end && s <= end)
@@ -455,6 +476,12 @@ export default {
       if (this.saving) return;
       const title = (this.form.title || '').trim();
       if (!title) return;
+      // 自用改版：日期面板还开着就点了保存——按面板上此刻选的保存（面板里填错了就提示，先不保存）
+      if (this.datePanelOpen && this.$refs.datePanel) {
+        const r = this.$refs.datePanel.result();
+        if (r.error) { this.error = this.$t(r.error); return; }
+        this.applyDatePanel(r.patch);
+      }
       // 时间段：结束须晚于开始，否则提示并阻止保存（不再静默吸附，避免改期被悄悄改写）
       if (this.form.timeMode === 'range' && this.form.dueStart && this.form.dueEnd
           && this.toMin(this.form.dueEnd) <= this.toMin(this.form.dueStart)) {
@@ -462,7 +489,8 @@ export default {
         return;
       }
       this.saving = true; this.error = '';
-      const { dueAt, dueEndAt, startAt } = this.buildDueAt();
+      const built = this.buildDueAt();
+      const { dueAt, dueEndAt, startAt } = built;
       const payload = {
         // 存盘时还原为完整 Markdown：标题 | [链接](地址) | #标签（提醒关闭时追加 🔕 标记）
         summary: composeSummary(title, this.form.links, this.form.tags, { mute: !this.form.remind }),
@@ -470,8 +498,9 @@ export default {
         dueAt,
         dueEndAt,
         startAt,
-        // 无日期也按「全天」传：数据层据此把行首的时间（如「09:00」）一并去掉
-        dueAllDay: this.isAllDay || this.isCrossDate || this.isNoDate,
+        // 无日期也按「全天」传：数据层据此把行首的时间（如「09:00」）一并去掉。
+        // 自用改版：跨日期默认全天，带了时间的（buildDueAt 返回 dueAllDay: false）除外
+        dueAllDay: built.dueAllDay === false ? false : (this.isAllDay || this.isCrossDate || this.isNoDate),
         priority: levelToPriorityEmoji(this.form.priority),
         // 计划日期（⏳）：仅在「启用计划时间」时随 payload 传出（未传 = 数据层保持不动）
         ...(this.showScheduled ? { scheduledDate: this.form.scheduledDate || '' } : {})
@@ -666,30 +695,24 @@ export default {
 /* 表单原语（.tk-field/.btn 等）在全局弹窗样式 task-modal.css 中 */
 /* 提权到 .tk-modal：避免被 tasks-shared.css 的 .task-app .tk-check（20px 字号 + 18px 宽高）覆盖 */
 .tk-modal .tk-check { display: flex; align-items: center; gap: 7px; width: 100%; height: auto; font-size: 13px; line-height: 1.6; color: var(--ink-soft); margin: 2px 0 16px; cursor: pointer; }
-/* 时间区：全天开关 + 单/时间段切换 + 选择器，纵向排布 */
+/* 时间区：日期胶囊 + 展开的日期面板，纵向排布 */
 .tk-time-block { display: flex; flex-direction: column; gap: 10px; margin: 2px 0 16px; }
 .tk-time-block .tk-check { margin: 0; }
-/* 单时间 / 时间段 简单 tab 切换 */
-.tk-tm-tabs { display: inline-flex; align-self: flex-start; background: var(--background-modifier-hover); border-radius: 8px; padding: 2px; gap: 2px; }
-.tk-tm-tab {
-  border: none; background: transparent; color: var(--ink-soft);
-  font-family: inherit; font-size: 13px; line-height: 1.4;
-  padding: 5px 14px; border-radius: 6px; cursor: pointer;
-  transition: background .15s ease, color .15s ease;
+/* 日期胶囊（自用改版，仿滴答清单）：显示当前设的日期、时间，点开日期面板 */
+.tk-date-chip {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px;
+  height: auto; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; box-shadow: none;
+  background: var(--panel); color: var(--gold); font-family: inherit; font-size: 14px; line-height: 1.4; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
 }
-.tk-tm-tab:hover { color: var(--ink); }
-.tk-tm-tab.active { background: var(--panel); color: var(--gold); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.tk-date-chip:hover, .tk-date-chip.is-open { background: var(--gold-bg); border-color: var(--gold); }
+.tk-date-chip.is-empty { color: var(--ink-soft); }
+.tk-date-chip:disabled { opacity: .5; cursor: default; }
+.tk-date-chip-text { font-variant-numeric: tabular-nums; }
+.tk-date-chip-caret { color: var(--ink-soft); transition: transform .15s ease; }
+.tk-date-chip.is-open .tk-date-chip-caret { transform: rotate(180deg); }
 /* 「无日期」下的说明文字（自用改版） */
 .tk-nodate-hint { font-size: 13px; line-height: 1.5; color: var(--ink-soft); padding: 2px 2px 0; }
-/* 时间输入行：原生 date/time 选择器，对齐 .tk-field 表单原语 */
-.tk-time-row { display: flex; align-items: center; gap: 8px; }
-.tk-time-row input {
-  border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
-  font-family: inherit; font-size: 14px; color: var(--ink); background: var(--panel);
-  color-scheme: dark light;
-}
-.tk-time-row input:focus { outline: none; border-color: var(--gold); }
-.tk-tm-sep { flex: none; color: var(--ink-soft); font-weight: 700; }
 .tk-ic { font-size: 14px; color: var(--ink-soft); }
 .tk-ic.la-check-circle-o { color: var(--gold); }
 /* 子任务窗口标题下方的「属于：xxx」（自用改版） */

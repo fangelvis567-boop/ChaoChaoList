@@ -132,6 +132,32 @@ export function spansDays(t) {
   return sk < ek; // 仅当开始日早于结束日才视为跨天（逆序退化为单日）
 }
 
+// 自用改版：把一个时间戳挪到另一天（YYYY-MM-DD），时、分不变。
+// 拖动跨天长条的一端改日期时用，免得带时间的任务被抹成 0 点。dayKey 格式不对时原样返回
+export function moveToDay(ms, dayKey) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey || '');
+  if (ms == null || !m) return ms;
+  const d = new Date(Number(ms));
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), d.getHours(), d.getMinutes(), 0, 0).getTime();
+}
+
+// 自用改版：把跨天的任务整体挪到新的开始日：起止相隔几天、各自的时分都不变。
+// 拖动整条跨天长条换日期时用。返回 { startAt, dueAt, dueEndAt }（原来没有的仍为 null）
+export function shiftSpanToDay(task, dayKey) {
+  const from = /^(\d{4})-(\d{2})-(\d{2})$/.exec(todayKey(Number(task.startAt)));
+  const to = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dayKey || '');
+  // 相差几天：用 UTC 日期相减，避开夏令时那天差一小时
+  const n = (from && to)
+    ? Math.round((Date.UTC(+to[1], +to[2] - 1, +to[3]) - Date.UTC(+from[1], +from[2] - 1, +from[3])) / 86400000)
+    : 0;
+  const move = (ms) => {
+    if (ms == null) return null;
+    const d = new Date(Number(ms));
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n, d.getHours(), d.getMinutes(), 0, 0).getTime();
+  };
+  return { startAt: move(task.startAt), dueAt: move(task.dueAt), dueEndAt: move(task.dueEndAt) };
+}
+
 // 记录唯一标识：`日期#行号#文件相对路径`（日期为 YYYY-MM-DD 或 'inbox' 等）。
 // 同一日期可能存在多个日记文件，行号在不同文件内会重复，故把所属文件编入 guid 以唯一标识。
 // Obsidian 笔记名不允许含 '#'，故以 '#' 作为分隔安全无歧义。仍兼容旧格式 `日期#行号`（无文件段）。
@@ -383,6 +409,62 @@ function inlineRe() {
   return /\[([^\]]*)\]\(([^)\s]+)\)|(^|[\s(（])#([\p{L}\p{N}_\-/]+)/gu;
 }
 
+// ---------- 标签管理（自用改版：删除、改名、移进移出标签组） ----------
+// 标签就写在任务行里（#名字；标签组用 Obsidian 的嵌套写法「#组/名字」），插件不另存一份，
+// 所以「改标签」就是按同一条规则把任务行里的标签改掉。
+
+/**
+ * 按改标签的操作生成「旧名字 → 新名字」的对应规则（返回原名 = 不改；返回空串 = 删掉）。
+ *   { kind: 'rename', from, to } 改名：from 本身和它组里的子标签（from/…）一起换成 to 开头
+ *   { kind: 'delete', from }     删除：只删 from 这一个标签
+ *   { kind: 'dissolve', from }   解散标签组：组里的标签去掉「from/」前缀，回到顶层
+ * 移进标签组、移出标签组都用改名表示（如 #论文 → #科研/论文，#科研/论文 → #论文）。
+ */
+export function tagMapper(op) {
+  const o = op || {};
+  const from = String(o.from || '');
+  const to = String(o.to || '');
+  if (!from) return (tag) => tag;
+  if (o.kind === 'rename') {
+    return (tag) => (tag === from ? to : (tag.indexOf(from + '/') === 0 ? to + tag.slice(from.length) : tag));
+  }
+  if (o.kind === 'delete') return (tag) => (tag === from ? '' : tag);
+  if (o.kind === 'dissolve') return (tag) => (tag.indexOf(from + '/') === 0 ? tag.slice(from.length + 1) : tag);
+  return (tag) => tag;
+}
+
+/**
+ * 按 mapTag 改写一段文字里的标签。识别规则和 parseInline 一样：# 前面是开头、空白或括号，
+ * 链接 [文字](地址) 里的 # 不算。删掉的标签连同它前面那个空格一起去掉；
+ * 改完同一段里出现重复的标签（如把 #甲 改成已经有的 #乙），只留第一个。
+ * 一个要改的都没有时原样返回（原来就有的重复标签也不动）。
+ * @param {string} text
+ * @param {(tag: string) => string} mapTag
+ * @returns {string}
+ */
+export function rewriteTagsInText(text, mapTag) {
+  const src = String(text == null ? '' : text);
+  const map = (tag) => {
+    const v = mapTag(tag);
+    return v == null ? tag : String(v);
+  };
+  let any = false;
+  src.replace(inlineRe(), (m0, a, b, pre, tag) => {
+    if (tag !== undefined && map(tag) !== tag) any = true;
+    return m0;
+  });
+  if (!any) return src;
+  const seen = new Set();
+  return src.replace(inlineRe(), (m0, a, b, pre, tag) => {
+    if (tag === undefined) return m0; // 链接原样保留
+    const name = map(tag);
+    // 删掉，或改名后和前面的重复：前面是空格就连空格一起去掉；是括号就留下括号
+    if (!name || seen.has(name)) return (pre === '' || /\s/.test(pre)) ? '' : pre;
+    seen.add(name);
+    return pre + '#' + name;
+  });
+}
+
 // 提取标题中的标签与链接（结构化字段，便于筛选/展示），仅模块内部使用
 function parseInline(text) {
   const src = String(text == null ? '' : text);
@@ -470,6 +552,15 @@ export function composeSummary(title, links, tags, opts = {}) {
 // 清洗用户输入的标签名（去掉 # 前缀与非法字符）
 export function sanitizeTag(name) {
   return String(name == null ? '' : name).trim().replace(/^#+/, '').replace(/[\s]+/g, '-');
+}
+
+// 自用改版（标签管理）：把输入的标签名 / 标签组名整理成能写进任务的样子——
+// 去掉开头的 #、空格换成 -、去掉首尾和重复的 /；只能有文字、数字、_ - /，也不能全是数字（Obsidian 不认纯数字标签）。
+// 不合格返回空串
+export function cleanTagName(input) {
+  const s = sanitizeTag(input).replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
+  if (!s || !/^[\p{L}\p{N}_\-/]+$/u.test(s) || /^\d+$/.test(s)) return '';
+  return s;
 }
 
 // 输入法正在组字时按下的键不算快捷键：中文输入法用回车/退格上屏候选词，
@@ -666,6 +757,16 @@ export function spanDateText(t) {
 export function timeText(task) {
   if (!task || !task.dueAt) return '';
   if (task.dueAllDay) return t('app.allDay');
+  // 自用改版：跨天又带时间的任务（如 11/12 14:00 到 11/13 10:00）：开始时间在开始那天（startAt），
+  // 结束时间在结束那天（dueEndAt），所以结束时刻比开始早也照样显示成「14:00-10:00」；日期另由 dateText 显示「11/12-11/13」。
+  // 原来取 dueAt 的时刻：日记里的这种任务 dueAt 是结束那天的 0 点，会显示成「00:00」
+  if (spansDays(task) && task.startAt != null) {
+    const sd = new Date(Number(task.startAt));
+    const st = pad2(sd.getHours()) + ':' + pad2(sd.getMinutes());
+    if (!task.dueEndAt) return st;
+    const ed = new Date(Number(task.dueEndAt));
+    return st + '-' + pad2(ed.getHours()) + ':' + pad2(ed.getMinutes());
+  }
   const s = pad2(new Date(task.dueAt).getHours()) + ':' + pad2(new Date(task.dueAt).getMinutes());
   // 结束时间早于开始时间（含逆序时间段）→ 按普通单时间显示，不画范围
   if (task.dueEndAt && Number(task.dueEndAt) > Number(task.dueAt)) {

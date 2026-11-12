@@ -10,7 +10,7 @@ import {
   INBOX_KEY, CHILD_INDENT,
   parseTasks, toRecord, serializeBlock, serializeTaskLine,
   nodeFromTask, locateNode, collectLineNos, todayKey, parseGuid, msToTime, dateToMs, flattenTasks,
-  priorityRank, splitSummary, splitDescription, nodeFromLine
+  priorityRank, splitSummary, splitDescription, nodeFromLine, rewriteTagsInText, tagMapper
 } from '../composables/tasks-logic.js';
 
 let plugin = null;
@@ -572,6 +572,62 @@ export async function getDetail(guid) {
 }
 export const loadChecklists = () => listChecklists();
 
+// ---------- 批量改标签（自用改版：标签管理——删除、改名、移进移出标签组） ----------
+// 标签写在任务行里，没有单独存，所以改标签 = 把所有任务行里的这个标签一起改掉。
+// 范围和 collectTags 一样：日记（按「每日笔记加载范围」）、收件箱、清单，主任务和各层子任务都算。
+// 只改任务行里复选框后面的部分：缩进、「- [ ] 」、行里其他内容原样保留；描述行、笔记正文、frontmatter 不动。
+
+// 改写一行任务里的标签；不是任务行、或没有要改的，原样返回
+function rewriteTaskLineTags(line, mapTag) {
+  const m = /^(\s*[-*+]\s+\[[^\]]\]\s*)([\s\S]*)$/.exec(String(line || ''));
+  if (!m) return line;
+  const rest = rewriteTagsInText(m[2], mapTag);
+  if (rest === m[2]) return line;
+  // 删掉开头或结尾的标签后，去掉多出来的空格
+  return m[1] + rest.replace(/^\s+/, '').replace(/\s+$/, '');
+}
+
+/**
+ * 批量改标签。op 的写法见 tasks-logic 的 tagMapper（rename / delete / dissolve）。
+ * opts.dryRun 为 true 时只数一数会改多少条任务、多少篇笔记，不写文件（确认弹窗里显示用）。
+ * 返回 { ok, tasks: 改到的任务行数, files: 改到的笔记篇数 }
+ */
+export async function editTags(op, opts = {}) {
+  const dryRun = !!opts.dryRun;
+  const mapTag = tagMapper(op);
+  if (!dryRun) noteSelfWrite();
+  const daily = listDailyFiles();
+  const files = [
+    ...daily,
+    { key: INBOX_KEY, path: taskFilePath(INBOX_KEY) },
+    ...checklistEntriesExceptDaily(daily),
+  ];
+  let tasks = 0;
+  let changedFiles = 0;
+  for (const f of files) {
+    if (!f.path) continue;
+    let doc;
+    try { doc = await readTasks(f.path, f.key); } catch (e) { continue; }
+    const lines = doc.lines.slice();
+    let n = 0;
+    const visit = (node) => {
+      const i = node.lineNo;
+      if (i != null && lines[i] != null) {
+        const next = rewriteTaskLineTags(lines[i], mapTag);
+        if (next !== lines[i]) { lines[i] = next; n += 1; }
+      }
+      (node.children || []).forEach(visit);
+    };
+    doc.roots.forEach(visit);
+    if (!n) continue;
+    tasks += n;
+    changedFiles += 1;
+    if (!dryRun) await writeTasks(f.path, doc.head, lines);
+  }
+  if (!dryRun && tasks) noteSelfWrite();
+  return res(200, { ok: true, tasks, files: changedFiles });
+}
+
 // ---------- 全库标签索引（编辑弹窗智能提示，issue #22） ----------
 // 扫描全部任务源（日记 / 收件箱 / 清单，含清单内无 📅 的任务与缩进子任务——
 // 它们不进日历聚合，但标签同样算「用过」），统计每个标签的使用频次。
@@ -649,6 +705,8 @@ export async function createTask(task) {
     // 清单：行内标记日期，文件不变
     if (t.dueAt) node.due = todayKey(Number(t.dueAt));
     if (t.startAt) node.start = todayKey(Number(t.startAt));
+    // 自用改版：开始、截止是同一天时只留 📅，不再重复写一个同日的 🛫
+    if (node.start && node.start === node.due) node.start = '';
   } else {
     // 日记：文件名=开始日；结束日 > 开始日时写行内 📅，🛫 无需（文件即开始日）
     node.start = '';
@@ -657,6 +715,30 @@ export async function createTask(task) {
   const { out, lineNo } = appendLines(doc.lines, node, '');
   await writeTasks(path, doc.head, out);
   return res(201, { ok: true, task: recordOf(dateKey, Object.assign({}, node, { lineNo }), { file: path }) });
+}
+
+// 自用改版：清单分组「末尾」的插入位置——插在分组里最后一行有内容的行后面，跳过分组末尾的空行
+// （文件结尾的换行、下一个 ### 标题前的空行）。原来直接插在这些空行后面：最后一组的新任务前面会多一个空行，
+// 中间的组则是新任务隔着空行贴到下一个标题上。
+//   lines —— 正文各行；headings —— ### 标题 [{ idx, title }]；groupTitle —— 分组名，空串 = 未分组（第一个 ### 之前）
+// 返回要插入的行号；分组不存在返回 -1。
+// 分组里还没有内容时：有标题的插在标题下一行；未分组的照原样插在第一个标题前（没有标题就是文件末尾）。
+function groupEndIndex(lines, headings, groupTitle) {
+  let start = 0;
+  let end;
+  if (!groupTitle) {
+    end = headings.length ? headings[0].idx : lines.length;
+  } else {
+    const h = headings.find((x) => x.title === groupTitle);
+    if (!h) return -1;
+    const next = headings.find((x) => x.idx > h.idx);
+    start = h.idx + 1;
+    end = next ? next.idx : lines.length;
+  }
+  for (let i = end - 1; i >= start; i--) {
+    if (String(lines[i] || '').trim()) return i + 1;
+  }
+  return groupTitle ? start : end;
 }
 
 // 在清单指定分组的最后一行追加任务。
@@ -691,6 +773,8 @@ export async function createChecklistTask(listKey, groupTitle, task) {
   } else {
     if (t.dueAt) node.due = todayKey(Number(t.dueAt));
     if (t.startAt) node.start = todayKey(Number(t.startAt));
+    // 自用改版：开始、截止是同一天时只留 📅，不再重复写一个同日的 🛫
+    if (node.start && node.start === node.due) node.start = '';
   }
   // 整块写入（任务行 + 描述 + 描述里提升出来的子任务）。
   // 原先只写任务行，在清单分组里新建任务时填的描述会被丢掉。
@@ -702,15 +786,8 @@ export async function createChecklistTask(listKey, groupTitle, task) {
     if (m) headings.push({ idx, title: m[1].trim() });
   });
 
-  let insertAt;
-  if (!groupTitle) {
-    insertAt = headings.length ? headings[0].idx : doc.lines.length;
-  } else {
-    const h = headings.find((x) => x.title === groupTitle);
-    if (!h) return res(404, { ok: false, reason: 'group_not_found' });
-    const next = headings.find((x) => x.idx > h.idx);
-    insertAt = next ? next.idx : doc.lines.length;
-  }
+  const insertAt = groupEndIndex(doc.lines, headings, groupTitle);
+  if (insertAt < 0) return res(404, { ok: false, reason: 'group_not_found' });
 
   const lines = doc.lines.slice();
   lines.splice(insertAt, 0, ...newLines);
@@ -743,15 +820,8 @@ export async function moveChecklistTask(listKey, guid, targetGroupTitle) {
     const m = /^###\s+(.+?)\s*$/.exec(line);
     if (m) headings.push({ idx, title: m[1].trim() });
   });
-  let insertAt;
-  if (!targetGroupTitle) {
-    insertAt = headings.length ? headings[0].idx : keep.length;
-  } else {
-    const h = headings.find((x) => x.title === targetGroupTitle);
-    if (!h) return res(404, { ok: false, reason: 'group_not_found' });
-    const next = headings.find((x) => x.idx > h.idx);
-    insertAt = next ? next.idx : keep.length;
-  }
+  const insertAt = groupEndIndex(keep, headings, targetGroupTitle);
+  if (insertAt < 0) return res(404, { ok: false, reason: 'group_not_found' });
 
   keep.splice(insertAt, 0, ...serializeBlock(node, node.indentStr));
   await writeTasks(path, doc.head, keep);
@@ -865,8 +935,9 @@ export async function updateTask(guid, patch) {
       // 清单 / 收件箱 / 子任务：日期仅行内 📅/🛫，文件位置不变（顺延时也只改 📅，不迁移）
       node.due = cd || '';
       node.start = cs || '';
-      // 子任务只有一天时只留 📅，不再重复写一个同日的 🛫，让笔记里那一行短一些
-      if (node.sub && node.start === node.due) node.start = '';
+      // 只有一天时只留 📅，不再重复写一个同日的 🛫，让笔记里那一行短一些。
+      // 自用改版：原来只对子任务这样做，清单、收件箱里的主任务保存时会多出一个同日的 🛫，现在一样去掉
+      if (node.start === node.due) node.start = '';
       node.time = p.dueAllDay ? '' : (p.dueAt != null ? msToTime(Number(p.dueAt)) : node.time);
       node.timeEnd = endTime;
     } else if (!cd) {

@@ -1,6 +1,6 @@
 import { Modal, Notice, Setting } from 'obsidian';
 import { t } from '../i18n/index.js';
-import { validHex } from '../composables/tasks-logic.js';
+import { validHex, cleanTagName, isImeKey } from '../composables/tasks-logic.js';
 
 // ============================================================================
 // Obsidian 原生 Modal 辅助
@@ -9,6 +9,72 @@ import { validHex } from '../composables/tasks-logic.js';
 // 按钮强调色）完全跟随主题，不受 Element Plus 与 Obsidian 全局样式互相污染。
 // 文案通过 i18n 的 t() 跟随 Obsidian 界面语言。
 // ============================================================================
+
+/**
+ * 自用改版：标签管理用的输入弹窗（给标签改名、把标签移到标签组）。
+ * 只有一个输入框；可以在下面列几个现成的选项（如已有的标签组），点一下就填进输入框。
+ * 确认时把输入整理成合格的标签名（cleanTagName），不合格就提示、不关窗。
+ */
+export class TagNameModal extends Modal {
+  /**
+   * @param {object} opts
+   * @param {string} opts.title 标题
+   * @param {string} [opts.value] 输入框里预先填好的内容
+   * @param {string} [opts.placeholder] 输入框的占位提示
+   * @param {string[]} [opts.options] 现成的选项（点一下填进输入框）
+   * @param {string} [opts.optionsLabel] 选项前面的说明文字
+   * @param {(name: string) => void} opts.onSave 确认回调，拿到整理过的名字（不带 #）
+   */
+  constructor(app, { title = '', value = '', placeholder = '', options = [], optionsLabel = '', onSave }) {
+    super(app);
+    this.title = title;
+    this.value = value;
+    this.placeholder = placeholder;
+    this.options = options || [];
+    this.optionsLabel = optionsLabel;
+    this.onSave = onSave;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.modalEl.addClass('mylife-form-modal');
+    this.titleEl.setText(this.title);
+
+    const input = contentEl.createEl('input', { cls: 'mylife-input', type: 'text' });
+    input.placeholder = this.placeholder;
+    input.value = this.value;
+    if (this.options.length) {
+      const row = contentEl.createDiv('dt-tagname-options');
+      if (this.optionsLabel) row.createSpan({ cls: 'dt-tagname-label', text: this.optionsLabel });
+      for (const o of this.options) {
+        const b = row.createEl('button', { cls: 'dt-tagname-opt', text: o });
+        b.addEventListener('click', () => { input.value = o; input.focus(); });
+      }
+    }
+    const submit = () => {
+      const name = cleanTagName(input.value);
+      if (!name) { new Notice(t('app.tagNameInvalid')); return; }
+      const cb = this.onSave;
+      this.close();
+      if (cb) cb(name);
+    };
+    // 回车确认（中文输入法选字时的回车不算）
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !isImeKey(e)) { e.preventDefault(); submit(); }
+    });
+
+    const ops = new Setting(contentEl);
+    ops.addButton((b) => b.setButtonText(t('common.cancel')).onClick(() => this.close()));
+    ops.addButton((b) => b.setButtonText(t('common.confirm')).setCta().onClick(submit));
+
+    setTimeout(() => { input.focus(); input.select(); }, 50);
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+}
 
 /** 任务链接编辑弹窗（原生 Modal；link 为 null 表示新增） */
 export class LinkFormModal extends Modal {
