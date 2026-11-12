@@ -486,9 +486,21 @@ export async function loadChecklistGroups(listKey) {
     || (a.rec.dueAt || 0) - (b.rec.dueAt || 0);
   // 把任务树的每个节点包成 { rec: 任务记录, kids: 子节点 }
   const wrap = (n) => ({ rec: recOf(n), kids: (n.children || []).map(wrap) });
-  // 按上面的规则把一组兄弟节点（连同各自的后代）展开成一维列表：父在前，子紧随其后
-  const emit = (items, out) => {
-    for (const it of items.slice().sort(bySiblings)) { out.push(it.rec); emit(it.kids, out); }
+  // 按上面的规则把一组兄弟节点（连同各自的后代）展开成一维列表：父在前，子紧随其后。
+  // 自用改版：顺带给每条记录标上它在任务树里的位置，清单页据此把子任务挂在主任务下面显示：
+  //   depth —— 层级（0 = 主任务，子任务 1，再下一层 2……；按任务树算，空格缩进的子任务也算得对）
+  //   parentGuid / parentTitle —— 父任务的 guid 和纯文字标题（与其他视图里子任务记录的同名字段一个意思）
+  //   subtasks —— 直接子任务的记录（已按同样的规则排好），用来显示子任务进度小标（如 1/3）
+  const emit = (items, out, parent, depth) => {
+    const sorted = items.slice().sort(bySiblings);
+    if (parent) parent.subtasks = sorted.map((it) => it.rec);
+    const parentTitle = parent ? splitSummary(parent.summary).title : '';
+    for (const it of sorted) {
+      it.rec.depth = depth;
+      if (parent) Object.assign(it.rec, { parentGuid: parent.guid, parentTitle });
+      out.push(it.rec);
+      emit(it.kids, out, it.rec, depth + 1);
+    }
     return out;
   };
   // 顶层任务归入它之前最近的一个 ### 标题（-1 = 标题之前，即未分组）；子任务跟随父任务
@@ -502,8 +514,8 @@ export async function loadChecklistGroups(listKey) {
     buckets.get(gi).push(wrap(root));
   }
   const groups = [];
-  if (buckets.has(-1)) groups.push({ title: '', tasks: emit(buckets.get(-1), []) });
-  headings.forEach((h, i) => groups.push({ title: h.title, tasks: emit(buckets.get(i) || [], []) }));
+  if (buckets.has(-1)) groups.push({ title: '', tasks: emit(buckets.get(-1), [], null, 0) });
+  headings.forEach((h, i) => groups.push({ title: h.title, tasks: emit(buckets.get(i) || [], [], null, 0) }));
   const records = groups.reduce((all, g) => all.concat(g.tasks), []);
   const done = records.filter((t) => t.completed && !t.cancelled).length;
   return res(200, { ok: true, key: listKey, name: listNameOf(listKey), groups, total: records.length, done });

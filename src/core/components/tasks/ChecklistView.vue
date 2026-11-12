@@ -59,7 +59,7 @@
                  @dragover.prevent="onDragOver($event, g.title)" @drop="onDrop($event, g.title)">
               <div class="tk-cl-gtitle" :class="{ 'is-plain': !g.title }">
                 <template v-if="g.title">
-                  <span class="tk-cl-gtxt">{{ g.title }}</span><span class="tk-cl-gcnt">{{ g.tasks.length }}</span>
+                  <span class="tk-cl-gtxt">{{ g.title }}</span><span class="tk-cl-gcnt">{{ g.count }}</span>
                 </template>
                 <span v-else class="tk-cl-gplain">{{ $t('app.ungrouped') }}</span>
                 <button class="tk-add cl-gadd" type="button" :title="$t('app.addTaskToGroup')" @click="openAdd(g)">
@@ -68,7 +68,7 @@
               </div>
               <transition-group class="tk-cl-rows" tag="div" name="tk-clmove">
                 <div v-for="t in g.tasks" :key="t.guid" class="tk-cl-row"
-                     :class="{ done: t.completed, cancel: t.cancelled }" :style="{ '--cl-depth': t.indent || 0 }" @click="onTaskClick(t, $event)" :title="$t('app.rowJumpTip')"
+                     :class="{ done: t.completed, cancel: t.cancelled, 'is-sub': t.depth > 0 }" :style="{ '--cl-depth': t.depth || 0 }" @click="onTaskClick(t, $event)" :title="$t('app.rowJumpTip')"
                      draggable="true" @dragstart="onDragStart($event, t)" @dragend="onDragEnd"
                      @contextmenu.prevent="onContextMenu(t, $event)">
                   <i class="tk-check" :class="[{ done: t.completed }, statusIcon(t)]"
@@ -80,8 +80,11 @@
                     </div>
                     <div v-if="t.description" class="tk-cl-desc">{{ firstLine(t.description) }}</div>
                   </div>
+                  <!-- 自用改版：有子任务的显示子任务进度（如 1/3）和收起按钮，和列表视图一样 -->
+                  <sub-progress v-if="hasSubs(t)" :task="t" class="tk-cl-subprog" />
+                  <button v-if="showFold(t)" class="tk-subfold tk-cl-subfold" :class="{ 'is-folded': isFolded(t) }" type="button"
+                          v-tooltip="isFolded(t) ? $t('app.subUnfold') : $t('app.subFold')" @click.stop="toggleFold(t)"><i class="la la-angle-down"></i></button>
                   <span v-if="t.dueAt && (!sameJournalDay(t) || (timeText(t) && !t.dueAllDay))" class="tk-cl-date"><template v-if="!sameJournalDay(t)"><i class="tk-date-ico la la-calendar"></i>{{ dateText(t) }}</template><template v-if="timeText(t) && !t.dueAllDay"><i class="tk-date-ico tk-date-ico-sep la la-clock"></i>{{ timeText(t) }}</template></span>
-                  <span v-if="t.subtaskCount" class="tk-cl-sub"><i class="la la-list-ul"></i>{{ t.subtaskCount }}</span>
                 </div>
                 <div v-if="!g.tasks.length" key="__empty" class="tk-cl-gempty">{{ $t('app.noTasks') }}</div>
               </transition-group>
@@ -96,7 +99,7 @@
                  @dragover.prevent="onDragOver($event, g.title)" @drop="onDrop($event, g.title)">
             <div class="tk-cl-gtitle" :class="{ 'is-plain': !g.title }">
               <template v-if="g.title">
-                <span class="tk-cl-gtxt">{{ g.title }}</span><span class="tk-cl-gcnt">{{ g.tasks.length }}</span>
+                <span class="tk-cl-gtxt">{{ g.title }}</span><span class="tk-cl-gcnt">{{ g.count }}</span>
               </template>
               <span v-else class="tk-cl-gplain">{{ $t('app.ungrouped') }}</span>
               <button class="tk-add cl-gadd" type="button" :title="$t('app.addTaskToGroup')" @click="openAdd(g)">
@@ -105,7 +108,7 @@
             </div>
             <transition-group class="tk-cl-rows" tag="div" name="tk-clmove">
               <div v-for="t in g.tasks" :key="t.guid" class="tk-cl-row"
-                   :class="{ done: t.completed, cancel: t.cancelled }" :style="{ '--cl-depth': t.indent || 0 }" @click="onTaskClick(t, $event)"
+                   :class="{ done: t.completed, cancel: t.cancelled, 'is-sub': t.depth > 0 }" :style="{ '--cl-depth': t.depth || 0 }" @click="onTaskClick(t, $event)"
                    :title="$t('app.rowJumpTip')"
                    draggable="true" @dragstart="onDragStart($event, t)" @dragend="onDragEnd"
                    @contextmenu.prevent="onContextMenu(t, $event)">
@@ -119,7 +122,10 @@
                   <div v-if="t.description" class="tk-cl-desc">{{ firstLine(t.description) }}</div>
                   <span v-if="t.dueAt && (!sameJournalDay(t) || (timeText(t) && !t.dueAllDay))" class="tk-cl-date tk-cl-date-sub"><template v-if="!sameJournalDay(t)"><i class="tk-date-ico la la-calendar"></i>{{ dateText(t) }}</template><template v-if="timeText(t) && !t.dueAllDay"><i class="tk-date-ico tk-date-ico-sep la la-clock"></i>{{ timeText(t) }}</template></span>
                 </div>
-                <span v-if="t.subtaskCount" class="tk-cl-sub"><i class="la la-list-ul"></i>{{ t.subtaskCount }}</span>
+                <!-- 自用改版：有子任务的显示子任务进度（如 1/3）和收起按钮，和列表视图一样 -->
+                <sub-progress v-if="hasSubs(t)" :task="t" class="tk-cl-subprog" />
+                <button v-if="showFold(t)" class="tk-subfold tk-cl-subfold" :class="{ 'is-folded': isFolded(t) }" type="button"
+                        v-tooltip="isFolded(t) ? $t('app.subUnfold') : $t('app.subFold')" @click.stop="toggleFold(t)"><i class="la la-angle-down"></i></button>
               </div>
               <div v-if="!g.tasks.length" key="__empty" class="tk-cl-gempty">{{ $t('app.noTasks') }}</div>
             </transition-group>
@@ -139,6 +145,10 @@ import { Tasks } from '../../composables/useTasks.js';
 import { taskFilePath } from '../../api/tasks.js';
 import { statusIcon, dateText, timeText, richSummaryNoTags, renderInlineHtml, scheduledText, descPreview, todayKey } from '../../composables/tasks-logic.js';
 import { getClJournalFoldedPref, setClJournalFoldedPref } from '../../composables/viewPrefs.js';
+// 自用改版：子任务挂在主任务下面显示（排行规则见 checklistRows.js）；进度小标、收起状态与列表视图共用
+import { buildChecklistRows, hasVisibleSubtasks } from '../../composables/checklistRows.js';
+import { hasSubtasks, isSubFolded, toggleSubFold } from '../../composables/subtasks.js';
+import SubProgress from './SubProgress.vue';
 import { VueModal } from '../../ui/VueModal.js';
 import TaskEditorModal from '../TaskEditorModal.vue';
 import { openTaskInFile } from '../../utils/openTaskInFile.js';
@@ -155,7 +165,7 @@ export default {
     // 与日/周/月/日程共享的「仅显示待办」开关（由 TasksApp 的 hideDone 传入）
     hideDone: { type: Boolean, default: false }
   },
-  components: { TaskContextMenu },
+  components: { TaskContextMenu, SubProgress },
   data() {
     return {
       lists: [],
@@ -172,22 +182,19 @@ export default {
     };
   },
   computed: {
-    // 隐藏已完成/已取消：仅显示真正的待办（未完成且未取消），并去掉因此变空的组
+    // 每组要显示的任务行（自用改版：子任务挂在主任务下面，排法和「隐藏已完成」的规则见 checklistRows.js）。
+    // tasks = 按显示顺序排好的任务行；count = 组名旁的任务数。开着「隐藏已完成」时，去掉一条都不剩的组
     visibleGroups() {
-      // 稳定排序：未完成在上，已完成/已取消在下方；每组内保持原相对顺序
-      const sortTasks = (tasks) => {
-        const rank = (t) => (t.completed || t.cancelled) ? 1 : 0;
-        return tasks
-          .map((t, i) => ({ t, i }))
-          .sort((a, b) => rank(a.t) - rank(b.t) || a.i - b.i)
-          .map((x) => x.t);
-      };
-      if (!this.hideDone) {
-        return this.groups.map((g) => ({ title: g.title, tasks: sortTasks(g.tasks) }));
-      }
-      return this.groups
-        .map((g) => ({ title: g.title, tasks: sortTasks(g.tasks).filter((t) => !(t.completed || t.cancelled)) }))
-        .filter((g) => g.tasks.length);
+      const isFolded = (t) => this.isFolded(t);
+      const out = this.groups.map((g) => {
+        const r = buildChecklistRows(g.tasks, { hideDone: this.hideDone, isFolded });
+        return { title: g.title, tasks: r.rows, count: r.count };
+      });
+      return this.hideDone ? out.filter((g) => g.tasks.length) : out;
+    },
+    // 当前选中的清单 / 日记在库里的路径（收起状态按「文件 + 任务文字」记，要和列表视图记的对得上）
+    activeFile() {
+      return (this.activeKey && taskFilePath(this.activeKey)) || '';
     },
     // 自用改版：能出现在左侧的卡片。没有任务的日记（0 / 0）不列出来，「日记」组只收有任务的那几天；
     // 正在看的那张除外（比如刚在右侧删掉它最后一条任务），免得右侧内容突然被换掉。
@@ -259,6 +266,16 @@ export default {
       return !!(this.activeJournalDate && t && t.dueAt && todayKey(Number(t.dueAt)) === this.activeJournalDate);
     },
     gKey(g) { return g.title || '___ungrouped'; },
+    // ---------- 子任务（自用改版）：进度小标、收起 / 展开 ----------
+    // 有没有子任务（有就显示进度小标，哪怕子任务都做完、被「隐藏已完成」藏起来了）
+    hasSubs(t) { return hasSubtasks(t); },
+    // 要不要显示收起按钮：下面此刻有子任务可显示才显示
+    showFold(t) { return hasVisibleSubtasks(t, this.hideDone); },
+    // 收起状态的键用「所在文件 + 任务文字」（见 subtasks.js 的 foldKey）。
+    // 主题清单里的任务记录没带 file，这里补上清单文件的路径，和列表视图里同一条任务记的是同一个键
+    foldRef(t) { return { file: t.file || this.activeFile, summary: t.summary }; },
+    isFolded(t) { return isSubFolded(this.foldRef(t)); },
+    toggleFold(t) { toggleSubFold(this.foldRef(t)); },
     // 描述预览：取第一行文字并去掉 Markdown 符号（描述现在按 Markdown 原文保存）
     firstLine(s) { return descPreview(s); },
     async selectList(key) {
@@ -316,6 +333,9 @@ export default {
     openEditor(task, defaultDate) {
       new VueModal(this.plugin.app, TaskEditorModal, {
         open: true, task, defaultDate, plugin: this.plugin,
+        // 自用改版：点开的是子任务时，和其他视图一样标题显示「编辑子任务」，并注明属于哪个任务
+        isSubtask: !!(task && task.parentGuid),
+        parentTitle: (task && task.parentTitle) || '',
         onSaved: () => this.loadGroups(this.activeKey),
         onDeleted: () => this.loadGroups(this.activeKey),
         onSubtasksChanged: () => this.loadGroups(this.activeKey)
@@ -469,15 +489,31 @@ export default {
 .tk-cl-rows .tk-clmove-leave { opacity: 0; }
 
 .tk-cl-row {
+  position: relative; /* 子任务的引导线（::before）按行定位 */
   display: flex; align-items: flex-start; gap: 11px;
   padding: 9px 10px; border-radius: 9px; cursor: grab;
-  /* 按层级深度缩进，体现主任务 / 子任务隶属关系（深度来自 toRecord 的 indent） */
+  /* 按层级深度缩进，体现主任务 / 子任务隶属关系（自用改版：深度按任务树算，见数据层记录的 depth） */
   padding-left: calc(10px + (var(--cl-depth, 0) * 24px));
   transition: background .15s ease;
 }
 .tk-cl-row:active { cursor: grabbing; }
 .tk-cl-row:hover { background: var(--gold-bg); }
 .tk-cl-row .tk-check { flex: none; margin-top: 1px; }
+/* 自用改版：子任务行，和列表视图的子任务清单一样——左边一条细引导线，圆圈和文字小一号。
+   引导线画在上一层任务圆圈的正下方，每多一层多一条（重复渐变，每 24px 一条）；
+   上下各多伸出 2px，盖住行与行之间的空隙，同一个主任务下的子任务连成一条竖线 */
+.tk-cl-row.is-sub { padding-top: 6px; padding-bottom: 6px; }
+.tk-cl-row.is-sub::before {
+  content: ''; position: absolute; pointer-events: none;
+  top: -2px; bottom: -2px; left: 19px;
+  width: calc(var(--cl-depth, 0) * 24px);
+  background: repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px 24px);
+}
+.tk-cl-row.is-sub .tk-check { font-size: 17px; }
+.tk-cl-row.is-sub .tk-cl-sum { font-size: 13px; }
+/* 进度小标、收起按钮与第一行文字对齐 */
+.tk-cl-row > .tk-cl-subprog { margin-top: 2px; }
+.tk-cl-row > .tk-cl-subfold { margin-top: 1px; }
 .tk-cl-row-main { flex: 1 1 auto; min-width: 0; }
 /* 标题与 ⏳ 徽标同行（徽标见共享样式 .tk-sched，issue #13） */
 .tk-cl-sumrow { display: flex; align-items: baseline; min-width: 0; gap: 2px; }
@@ -494,7 +530,6 @@ export default {
 .tk-cl-date { flex: none; font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; padding-top: 3px; }
 /* 分栏视图下：日期时间作为任务文字下方的副行（块级、与正文留间距） */
 .tk-cl-date-sub { display: block; margin-top: 3px; }
-.tk-cl-sub { flex: none; display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--ink-soft); padding-top: 2px; }
 .tk-cl-gempty { padding: 6px 10px 10px; color: var(--ink-soft); font-size: 12px; opacity: .7; }
 
 /* 分栏视图：每个分组一栏，固定宽度，横向滚动；每栏内部独立纵向滚动 */

@@ -11,6 +11,7 @@ import {
   parseTasks, serializeBlock, collectLineNos, splitDescription, descPreview
 } from '../src/core/composables/tasks-logic.js';
 import { buildCalendarTasks, subProgress, visibleSubtasks } from '../src/core/composables/subtasks.js';
+import { buildChecklistRows, hasVisibleSubtasks } from '../src/core/composables/checklistRows.js';
 import { makeVault } from './fake-vault.js';
 
 // ---------- 极简测试框架 ----------
@@ -275,6 +276,56 @@ test('清单排序：标题之前的任务归入未分组，子任务跟着父�
   const g = body(await loadChecklistGroups(LIST_KEY));
   eq(g.groups.map((x) => [x.title, x.tasks.map((t) => t.summary)]), [['', ['散1', '散1的子']], ['组A', ['甲']]], '分组与顺序');
   eq([g.total, g.done], [3, 1], '计数');
+});
+
+test('清单页的层级：每条任务带上层级、父任务和直接子任务（空格缩进的子任务也算对）', async () => {
+  vaultWith({ [LIST]: HEAD_LIST + '- [ ] 父 #科研\n    - [x] 子甲\n    - [ ] 子乙\n        - [ ] 孙\n- [ ] 另一条\n' });
+  const ts = body(await loadChecklistGroups(LIST_KEY)).groups[0].tasks;
+  eq(ts.map((t) => [t.summary, t.depth]), [['父 #科研', 0], ['子甲', 1], ['子乙', 1], ['孙', 2], ['另一条', 0]], '顺序与层级');
+  const [fu, jia, yi, sun, other] = ts;
+  eq([fu.parentGuid, other.parentGuid], ['', ''], '主任务没有父任务');
+  eq([jia.parentGuid === fu.guid, yi.parentGuid === fu.guid, sun.parentGuid === yi.guid], [true, true, true], '子任务指向自己的父任务');
+  eq([jia.parentTitle, sun.parentTitle], ['父', '子乙'], '父任务标题（去掉 #标签）');
+  eq([fu, yi, sun, other].map((t) => t.subtasks.map((s) => s.summary)), [['子甲', '子乙'], ['孙'], [], []], '直接子任务');
+  eq(subProgress(fu), { done: 1, total: 2 }, '主任务的子任务进度');
+});
+
+// 清单页的任务行（checklistRows.js）用的小工具：按 [标题, 做完没有, 子任务] 搭一棵任务树，
+// 返回「父在前、子紧随其后」的一维记录列表（和 loadChecklistGroups 给出的形状一样）
+function clTree(spec) {
+  const out = [];
+  const make = (items, depth) => items.map(([summary, completed, kids]) => {
+    const t = { guid: summary, summary, completed: !!completed, cancelled: false, depth, subtasks: [] };
+    out.push(t);
+    t.subtasks = make(kids || [], depth + 1);
+    return t;
+  });
+  make(spec, 0);
+  return out;
+}
+
+test('清单页的任务行：子任务紧跟主任务；做完的只在同一层里沉底，不和主任务分开', () => {
+  const tasks = clTree([['甲', false, [['甲1', true], ['甲2', false]]], ['乙', true, [['乙1', false]]], ['丙', false]]);
+  const r = buildChecklistRows(tasks, {});
+  eq(r.rows.map((t) => t.summary), ['甲', '甲2', '甲1', '丙', '乙', '乙1'], '显示顺序');
+  eq(r.count, 6, '组名旁的任务数');
+});
+
+test('清单页「隐藏已完成」：做完的主任务下还有没做完的子任务时，主任务留着，下面只列没做完的', () => {
+  const tasks = clTree([['甲', false, [['甲1', true]]], ['乙', true, [['乙1', false], ['乙2', true]]], ['丙', true, [['丙1', true]]]]);
+  const r = buildChecklistRows(tasks, { hideDone: true });
+  eq(r.rows.map((t) => t.summary), ['甲', '乙', '乙1'], '显示的行');
+  eq(r.count, 2, '组名旁的任务数只算没做完的（甲、乙1）');
+  const jia = tasks.find((t) => t.summary === '甲');
+  const yi = tasks.find((t) => t.summary === '乙');
+  eq([hasVisibleSubtasks(jia, true), hasVisibleSubtasks(yi, true), hasVisibleSubtasks(jia, false)], [false, true, true], '要不要显示收起按钮');
+});
+
+test('清单页收起主任务：它的子任务不列出来，组名旁的任务数不变', () => {
+  const tasks = clTree([['甲', false, [['甲1', false, [['甲1a', false]]]]], ['乙', false]]);
+  const r = buildChecklistRows(tasks, { isFolded: (t) => t.summary === '甲1' });
+  eq(r.rows.map((t) => t.summary), ['甲', '甲1', '乙'], '显示的行');
+  eq(r.count, 4, '组名旁的任务数');
 });
 
 test('在清单分组里新建任务时填的描述不再丢失', async () => {
