@@ -14,8 +14,13 @@
 #     1. 需要换版本号时：改上面四个文件里的版本号，提交一次「chore: 发布 x.y.z」并推送 main
 #     2. 运行 node tests/run.mjs（测试）和 npm run build（构建）。
 #        构建产物写进 chaochao-list/ 目录——测试库的插件目录软链到这里，会一起变成新版
-#     3. 打标签 x.y.z 并推送到 GitHub
-#     4. 在 GitHub 私有仓库里创建发布版本 x.y.z，附上 main.js、manifest.json、styles.css
+#     3. 打 Mac 桌面小组件的安装包：bash mac-widget/scripts/install.sh --package
+#        （只写 mac-widget/build/，不安装、不碰系统；需要本机装有 Xcode）
+#     4. 打标签 x.y.z 并推送到 GitHub
+#     5. 在 GitHub 仓库里创建发布版本 x.y.z，附上 main.js、manifest.json、styles.css，
+#        外加小组件安装包 ChaoChaoListWidgets.zip（名字固定，另一台 Mac 用
+#        https://github.com/fangelvis567-boop/ChaoChaoList/releases/latest/download/ChaoChaoListWidgets.zip
+#        总能下到最新版；BRAT 只下载插件的三个文件，不理会这个安装包）
 #   不碰：任何 Obsidian 库。主库要装新版，仍按原来的流程：先备份插件目录，再复制这三个文件
 #
 # BRAT 的规则（据 BRAT 2.2.0 源码）：
@@ -25,8 +30,9 @@
 # =============================================================================
 set -euo pipefail
 
-REPO_SLUG="fangelvis567-boop/ChaoChaoList"         # GitHub 上的私有仓库（2026-11-11 由 dada-todo-list-mod 改名）
+REPO_SLUG="fangelvis567-boop/ChaoChaoList"         # GitHub 仓库（2026-11-11 由 dada-todo-list-mod 改名，2026-11-12 改为公开）
 BUILD_DIR="chaochao-list"                          # 构建产物目录（vite.config.js 里的 OUT_DIR，与插件 id 一致）
+WIDGET_ZIP="mac-widget/build/ChaoChaoListWidgets.zip"  # Mac 桌面小组件安装包（install.sh --package 打出来的）
 DRY_RUN=0
 WANT_VERSION=""
 
@@ -53,6 +59,9 @@ guard() { if [ "$DRY_RUN" = 1 ]; then printf '提示（正式运行时会在这�
 git fetch -q origin
 [ "$(git rev-parse main)" = "$(git rev-parse origin/main)" ] || guard "本地 main 和 GitHub 上的 main 不一致，先同步"
 gh auth status >/dev/null 2>&1 || guard "gh 没有登录 GitHub"
+# Mac 小组件安装包能不能打（只做检查：install.sh 的试运行不改任何东西）
+bash mac-widget/scripts/install.sh --package --dry-run >/dev/null 2>&1 \
+  || guard "打不了 Mac 小组件安装包（bash mac-widget/scripts/install.sh --package --dry-run 报错，多半是没装 Xcode）"
 
 CUR=$(node -p "require('./manifest.json').version")           # 当前版本号
 MIN_APP=$(node -p "require('./manifest.json').minAppVersion")  # 要求的最低 Obsidian 版本（写进 versions.json）
@@ -94,7 +103,9 @@ else
 fi
 NOTES="自用改版 $NEW（供 BRAT 安装 / 更新）
 
-$(git log --no-merges --format='- %s' $RANGE)"
+$(git log --no-merges --format='- %s' $RANGE)
+
+附件里的 ChaoChaoListWidgets.zip 是 Mac 桌面小组件程序（与插件版本号无关，BRAT 不会下载它），在另一台 Mac 上的装法见仓库 mac-widget/README.md。"
 
 say "当前版本：$CUR → 这次发布：$NEW"
 say "发布说明："
@@ -107,8 +118,9 @@ if [ "$DRY_RUN" = 1 ]; then
     say "  - 把 manifest.json、package.json、package-lock.json、versions.json 里的版本号改为 $NEW，提交「chore: 发布 $NEW」并推送 main"
   fi
   say "  - 运行测试 node tests/run.mjs，构建 npm run build"
+  say "  - 打 Mac 小组件安装包：bash mac-widget/scripts/install.sh --package（只写 mac-widget/build/）"
   say "  - 打标签 $NEW 并推送到 GitHub"
-  say "  - 在 $REPO_SLUG 创建发布版本 $NEW，附上 $BUILD_DIR/main.js、manifest.json、$BUILD_DIR/styles.css"
+  say "  - 在 $REPO_SLUG 创建发布版本 $NEW，附上 $BUILD_DIR/main.js、manifest.json、$BUILD_DIR/styles.css、$WIDGET_ZIP"
   exit 0
 fi
 
@@ -141,6 +153,9 @@ for f in main.js styles.css manifest.json; do
   [ -s "$BUILD_DIR/$f" ] || fail "构建产物缺少 $BUILD_DIR/$f"
 done
 cmp -s manifest.json "$BUILD_DIR/manifest.json" || fail "构建目录里的 manifest.json 和仓库根目录的不一致"
+# Mac 小组件安装包（不安装、不碰系统，只写 mac-widget/build/）
+bash mac-widget/scripts/install.sh --package
+[ -s "$WIDGET_ZIP" ] || fail "小组件安装包没打出来：$WIDGET_ZIP"
 
 # ---------- 5. 提交版本号、打标签、推送 ----------
 if [ "$NEW" != "$CUR" ]; then
@@ -153,7 +168,7 @@ git push -q origin "refs/tags/$NEW"
 
 # ---------- 6. 在 GitHub 上创建发布版本 ----------
 gh release create "$NEW" -R "$REPO_SLUG" --verify-tag --title "$NEW" --notes "$NOTES" \
-  "$BUILD_DIR/main.js" "manifest.json" "$BUILD_DIR/styles.css"
+  "$BUILD_DIR/main.js" "manifest.json" "$BUILD_DIR/styles.css" "$WIDGET_ZIP"
 
 say ""
 say "已发布 $NEW：$(gh release view "$NEW" -R "$REPO_SLUG" --json url --jq .url)"

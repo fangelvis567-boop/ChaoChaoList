@@ -31,6 +31,24 @@ bash mac-widget/scripts/install.sh             # 正式安装（再次运行 = �
 
 插件设置里的「Mac 桌面小组件」开关可以停掉导出（只在 Mac 桌面版显示）。在测试库里测完要把它关掉，否则测试库会用自己的数据覆盖主库的小组件数据。
 
+## 在另一台 Mac 上安装（不用 Xcode）
+
+每次发布插件（`scripts/release.sh`）都会顺带打一个小组件安装包，附在发布页上，名字固定为 `ChaoChaoListWidgets.zip`。它是通用程序（M 系列芯片和 Intel 都能用），要求 macOS 14 或更新。
+
+1. 下载最新的安装包：https://github.com/fangelvis567-boop/ChaoChaoList/releases/latest/download/ChaoChaoListWidgets.zip
+2. 双击解压，把 `ChaoChaoListWidgets.app` 拖进「应用程序」文件夹。必须放在这里，插件按这个位置找它。
+3. 打开「终端」，运行下面这一行。程序没有经过苹果公证，从网上下载后会带一个「隔离」标记，不去掉的话系统会拦着不让小组件运行：
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/ChaoChaoListWidgets.app
+   ```
+
+4. 双击打开一次 `ChaoChaoListWidgets`。它没有窗口，打开后看不到任何东西是正常的。
+5. 那台 Mac 上的 Obsidian：用 BRAT 把 ChaoChaoList 更新到 1.0.6 或更新，插件设置里的「Mac 桌面小组件」保持打开（默认就是开的）。
+6. 桌面空白处右键 →「编辑小组件」→ 搜索 ChaoChaoList → 把「四象限」「月视图」拖到桌面。
+
+以后更新：先在终端运行 `pkill -x ChaoChaoListWidgetsExtension; pkill -x ChaoChaoListWidgets` 结束旧版，再按上面 1–4 步下载、替换、去隔离标记、打开一次。
+
 ## 开发时核对排版
 
 `Sources/Preview/RenderPreview.swift` 能把界面画成 PNG，不用装进系统：
