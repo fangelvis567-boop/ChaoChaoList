@@ -4,8 +4,8 @@
 // 运行方式：在仓库根目录执行 `node tests/run.mjs`（由它负责打包并运行本文件）。
 // 读写范围：只读仓库源码；所有「文件」都在内存里（tests/fake-vault.js），不碰任何真实笔记。
 import {
-  initTasksApi, loadAll, loadByDate, listSubtasks, loadChecklistGroups,
-  createTask, createChecklistTask, updateTask, toggleTask
+  initTasksApi, loadAll, loadByDate, listSubtasks, loadChecklistGroups, loadChecklists,
+  createTask, createChecklistTask, moveChecklistTask, updateTask, toggleTask
 } from '../src/core/api/tasks.js';
 import {
   parseTasks, serializeBlock, collectLineNos, splitDescription, descPreview
@@ -283,6 +283,76 @@ test('在清单分组里新建任务时填的描述不再丢失', async () => {
   ok(v.read(LIST).endsWith('- [ ] 新任务\n\t说明一\n\t说明二'), '文件结尾不符: ' + JSON.stringify(v.read(LIST)));
   const g = body(await loadChecklistGroups(LIST_KEY));
   eq(g.groups[0].tasks.map((t) => [t.summary, t.description]), [['甲', ''], ['新任务', '说明一\n说明二']], '读回');
+});
+
+// ---------- 清单页里的日记（自用改版） ----------
+
+const J10 = '日记/2026-11-10.md';
+const J10_KEY = 'cl:日记/2026-11-10';
+const J12 = '日记/2026-11-12.md';
+/** 既是日记、又打了清单标记的笔记开头 */
+const HEAD_DAILY_LIST = '---\ntags:\n  - journal\n  - todoList\n---\n\n';
+
+test('日记打了清单标记：带 📅 的任务在日 / 周 / 月视图用的任务表里只出现一次', async () => {
+  vaultWith({ [J12]: HEAD_DAILY_LIST + '- [ ] 甲 📅 2026-11-13\n- [ ] 乙\n' });
+  const items = body(await loadAll()).items;
+  eq(['甲', '乙'].map((s) => items.filter((t) => t.summary === s).length), [1, 1], '各出现几次');
+  eq(items.find((t) => t.summary === '甲').date, '2026-11-12', '按日记读（记录里的日期是日记那天）');
+});
+
+test('清单页列出日记：默认就开，不用打标签；排在主题清单后面，按日期从新到旧', async () => {
+  vaultWith({
+    [LIST]: HEAD_LIST + '- [ ] 甲\n',
+    [J10]: HEAD_DAILY + '- [x] 早\n- [ ] 晚\n',
+    [J12]: HEAD_DAILY_LIST + '- [ ] 中\n'
+  });
+  const items = body(await loadChecklists()).items;
+  eq(items.map((c) => [c.name, !!c.journal, c.date || '', c.done, c.total]),
+    [['项目', false, '', 0, 1], ['2026-11-12', true, '2026-11-12', 0, 1], ['2026-11-10', true, '2026-11-10', 1, 2]],
+    '左侧条目（名字、是否在日记组、日期、完成数、总数）');
+});
+
+test('关掉「清单页显示日记」：不列日记；打了清单标记的日记照旧列在清单里', async () => {
+  vaultWith({
+    [LIST]: HEAD_LIST + '- [ ] 甲\n',
+    [J10]: HEAD_DAILY + '- [ ] 早\n',
+    [J12]: HEAD_DAILY_LIST + '- [ ] 中\n'
+  }, { checklistShowJournal: false });
+  const items = body(await loadChecklists()).items;
+  eq(items.map((c) => [c.name, !!c.journal, c.date || '']), [['2026-11-12', false, '2026-11-12'], ['项目', false, '']], '左侧条目');
+});
+
+test('在清单页打开日记：任务按日记算；改日期时整块搬到那天的日记，不写行尾 📅', async () => {
+  const v = vaultWith({ [J10]: HEAD_DAILY + '### 科研\n- [ ] 读文献\n\t- [ ] 下载\n- [ ] 写摘要\n' });
+  const g = body(await loadChecklistGroups(J10_KEY));
+  eq(g.groups.map((x) => [x.title, x.tasks.map((t) => t.summary)]), [['科研', ['读文献', '下载', '写摘要']]], '分组');
+  const t = g.groups[0].tasks[0];
+  eq([t.date, t.dueAt, t.file], ['2026-11-10', ms(2026, 11, 10), J10], '读到的任务按日记算');
+  body(await updateTask(t.guid, { dueAt: ms(2026, 11, 12), dueEndAt: null, startAt: undefined, dueAllDay: true }));
+  eq(v.read(J10), HEAD_DAILY + '### 科研\n- [ ] 写摘要\n', '原日记');
+  const moved = v.read(J12) || '';
+  ok(moved.includes('- [ ] 读文献\n\t- [ ] 下载') && !moved.includes('📅'), '目标日记: ' + JSON.stringify(moved));
+});
+
+test('在清单页给日记的分组加任务：同一天插进该分组；换了日期进那天的日记；无日期进收件箱', async () => {
+  const v = vaultWith({ [J10]: HEAD_DAILY + '### 科研\n- [ ] 读文献\n### 生活\n- [ ] 买菜\n' });
+  const after = HEAD_DAILY + '### 科研\n- [ ] 读文献\n- [ ] 跑数据\n### 生活\n- [ ] 买菜\n';
+  body(await createChecklistTask(J10_KEY, '科研', { summary: '跑数据', dueAt: ms(2026, 11, 10), dueAllDay: true }));
+  eq(v.read(J10), after, '同一天：插进「科研」组，不写日期');
+  body(await createChecklistTask(J10_KEY, '科研', { summary: '写摘要', dueAt: ms(2026, 11, 12), dueAllDay: true }));
+  ok((v.read(J12) || '').includes('- [ ] 写摘要'), '换了日期：进 11-12 的日记');
+  body(await createChecklistTask(J10_KEY, '生活', Object.assign({ summary: '买书' }, NO_DATE)));
+  ok((v.read('Inbox.md') || '').includes('- [ ] 买书'), '无日期：进收件箱');
+  eq(v.read(J10), after, '后两条都没留在原日记');
+});
+
+test('在清单页把日记里的任务拖到别的分组：在同一篇日记里整块挪过去', async () => {
+  const v = vaultWith({ [J10]: HEAD_DAILY + '### 科研\n- [ ] 读文献\n\t- [ ] 下载\n### 生活\n- [ ] 买菜\n' });
+  const t = body(await loadChecklistGroups(J10_KEY)).groups[0].tasks[0];
+  body(await moveChecklistTask(J10_KEY, t.guid, '生活'));
+  const g = body(await loadChecklistGroups(J10_KEY));
+  eq(g.groups.map((x) => [x.title, x.tasks.map((s) => s.summary)]), [['科研', []], ['生活', ['买菜', '读文献', '下载']]], '拖动后的分组');
+  eq(v.paths(), [J10], '没有新建别的文件');
 });
 
 // ============================================================

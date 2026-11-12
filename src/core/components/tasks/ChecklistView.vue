@@ -3,22 +3,37 @@
     <!-- 左侧：清单列表（固定 260px） -->
     <aside class="tk-cl-side">
       <div class="tk-cl-side-h"><i class="la la-tasks"></i><span>{{ $t('app.viewCl') }}</span></div>
-      <div v-if="!lists.length" class="tk-cl-side-empty">{{ $t('app.clSideEmpty') }}</div>
+      <!-- 自用改版：没有任务的日记不算清单；只剩这种日记时，按「还没有清单」提示 -->
+      <div v-if="!listedLists.length" class="tk-cl-side-empty">{{ $t('app.clSideEmpty') }}</div>
+      <!-- 自用改版：清单都已完成、又开着「隐藏已完成」时，左侧给一句提示，不至于一片空白 -->
+      <div v-else-if="!sideRows.length" class="tk-cl-side-empty">{{ $t('app.clAllDoneHidden') }}</div>
       <div v-else class="tk-cl-list">
-        <div v-for="c in lists" :key="c.key" class="tk-cl-item" :data-href="taskFilePath(c.key) || ''">
-          <div class="tk-cl-item-main" :class="{ on: c.key === activeKey }"
-               role="button" tabindex="0"
-               @click="selectList(c.key)"
-               @keydown.enter.prevent="selectList(c.key)"
-               @keydown.space.prevent="selectList(c.key)">
-            <div class="tk-cl-name">{{ c.name }}</div>
-            <div class="tk-cl-bar"><i :style="{ width: pct(c) + '%' }"></i></div>
-            <div class="tk-cl-meta">{{ $t('app.clProgressPct', { done: c.done, total: c.total, pct: pct(c) }) }}</div>
+        <template v-for="c in sideRows" :key="c.key">
+          <!-- 自用改版：「日记」组排在主题清单后面，前面一行组名；点组名收起 / 展开整组，状态记在本机 -->
+          <div v-if="c.isSec" class="tk-cl-sec" role="button" tabindex="0"
+               :aria-expanded="journalFolded ? 'false' : 'true'"
+               @click="toggleJournalFold"
+               @keydown.enter.prevent="toggleJournalFold"
+               @keydown.space.prevent="toggleJournalFold">
+            <i class="la la-chevron-right tk-cl-sec-caret" :class="{ open: !journalFolded }"></i>
+            <span>{{ $t('app.clJournalGroup') }}</span>
+            <span class="cnt">{{ c.count }}</span>
           </div>
-          <button class="tk-cl-open" type="button" :title="$t('app.openChecklistFile')" @click.stop="openFile(c.key)">
-            <i class="la la-external-link"></i>
-          </button>
-        </div>
+          <div v-else class="tk-cl-item" :data-href="taskFilePath(c.key) || ''">
+            <div class="tk-cl-item-main" :class="{ on: c.key === activeKey }"
+                 role="button" tabindex="0"
+                 @click="selectList(c.key)"
+                 @keydown.enter.prevent="selectList(c.key)"
+                 @keydown.space.prevent="selectList(c.key)">
+              <div class="tk-cl-name">{{ c.name }}</div>
+              <div class="tk-cl-bar"><i :style="{ width: pct(c) + '%' }"></i></div>
+              <div class="tk-cl-meta">{{ $t('app.clProgressPct', { done: c.done, total: c.total, pct: pct(c) }) }}</div>
+            </div>
+            <button class="tk-cl-open" type="button" :title="$t('app.openChecklistFile')" @click.stop="openFile(c.key)">
+              <i class="la la-external-link"></i>
+            </button>
+          </div>
+        </template>
       </div>
     </aside>
 
@@ -65,7 +80,7 @@
                     </div>
                     <div v-if="t.description" class="tk-cl-desc">{{ firstLine(t.description) }}</div>
                   </div>
-                  <span v-if="t.dueAt" class="tk-cl-date"><i class="tk-date-ico la la-calendar"></i>{{ dateText(t) }}<template v-if="timeText(t) && !t.dueAllDay"><i class="tk-date-ico tk-date-ico-sep la la-clock"></i>{{ timeText(t) }}</template></span>
+                  <span v-if="t.dueAt && (!sameJournalDay(t) || (timeText(t) && !t.dueAllDay))" class="tk-cl-date"><template v-if="!sameJournalDay(t)"><i class="tk-date-ico la la-calendar"></i>{{ dateText(t) }}</template><template v-if="timeText(t) && !t.dueAllDay"><i class="tk-date-ico tk-date-ico-sep la la-clock"></i>{{ timeText(t) }}</template></span>
                   <span v-if="t.subtaskCount" class="tk-cl-sub"><i class="la la-list-ul"></i>{{ t.subtaskCount }}</span>
                 </div>
                 <div v-if="!g.tasks.length" key="__empty" class="tk-cl-gempty">{{ $t('app.noTasks') }}</div>
@@ -102,7 +117,7 @@
                     <span v-if="t.scheduledAt" class="tk-sched" v-tooltip="scheduledText(t)">{{ scheduledText(t) }}</span>
                   </div>
                   <div v-if="t.description" class="tk-cl-desc">{{ firstLine(t.description) }}</div>
-                  <span v-if="t.dueAt" class="tk-cl-date tk-cl-date-sub"><i class="tk-date-ico la la-calendar"></i>{{ dateText(t) }}<template v-if="timeText(t) && !t.dueAllDay"><i class="tk-date-ico tk-date-ico-sep la la-clock"></i>{{ timeText(t) }}</template></span>
+                  <span v-if="t.dueAt && (!sameJournalDay(t) || (timeText(t) && !t.dueAllDay))" class="tk-cl-date tk-cl-date-sub"><template v-if="!sameJournalDay(t)"><i class="tk-date-ico la la-calendar"></i>{{ dateText(t) }}</template><template v-if="timeText(t) && !t.dueAllDay"><i class="tk-date-ico tk-date-ico-sep la la-clock"></i>{{ timeText(t) }}</template></span>
                 </div>
                 <span v-if="t.subtaskCount" class="tk-cl-sub"><i class="la la-list-ul"></i>{{ t.subtaskCount }}</span>
               </div>
@@ -122,7 +137,8 @@
 <script>
 import { Tasks } from '../../composables/useTasks.js';
 import { taskFilePath } from '../../api/tasks.js';
-import { statusIcon, dateText, timeText, richSummaryNoTags, renderInlineHtml, scheduledText, descPreview } from '../../composables/tasks-logic.js';
+import { statusIcon, dateText, timeText, richSummaryNoTags, renderInlineHtml, scheduledText, descPreview, todayKey } from '../../composables/tasks-logic.js';
+import { getClJournalFoldedPref, setClJournalFoldedPref } from '../../composables/viewPrefs.js';
 import { VueModal } from '../../ui/VueModal.js';
 import TaskEditorModal from '../TaskEditorModal.vue';
 import { openTaskInFile } from '../../utils/openTaskInFile.js';
@@ -152,6 +168,7 @@ export default {
       error: '',
       dragGuid: '',        // 正在拖拽的任务 guid
       dragOverTitle: '',   // 当前拖拽悬停的分组标题（用于高亮）
+      journalFolded: getClJournalFoldedPref(), // 自用改版：左侧「日记」组是否收起（记在本机，默认展开）
     };
   },
   computed: {
@@ -172,6 +189,32 @@ export default {
         .map((g) => ({ title: g.title, tasks: sortTasks(g.tasks).filter((t) => !(t.completed || t.cancelled)) }))
         .filter((g) => g.tasks.length);
     },
+    // 自用改版：能出现在左侧的卡片。没有任务的日记（0 / 0）不列出来，「日记」组只收有任务的那几天；
+    // 正在看的那张除外（比如刚在右侧删掉它最后一条任务），免得右侧内容突然被换掉。
+    // 主题清单哪怕还没有任务也照常列出——新建的清单要能点进去加任务。
+    listedLists() {
+      return this.lists.filter((c) => !(c.journal && !c.total) || c.key === this.activeKey);
+    },
+    // 自用改版：左侧实际显示的行：主题清单 → 「日记」组名 → 日记卡片（组收起时不列卡片）。
+    // 「隐藏已完成」开着时，进度 100% 的卡片也藏起来；正在看的那张除外，免得勾完最后一条时选中项突然消失。
+    // 还没有任务的主题清单（0 / 0）不算完成，照常显示。组名后的数字是此刻露出来的日记篇数，
+    // 一篇都不露时连组名也不显示。
+    // 组名行用 isSec 标记，其余行就是清单条目本身（和 lists 共用同一批对象，进度同步不受影响）。
+    sideRows() {
+      const hidden = (c) => this.hideDone && c.total > 0 && c.done >= c.total && c.key !== this.activeKey;
+      const rows = this.listedLists.filter((c) => !c.journal && !hidden(c));
+      const shown = this.listedLists.filter((c) => c.journal && !hidden(c));
+      if (shown.length) {
+        rows.push({ key: '__journal_sec', isSec: true, count: shown.length });
+        if (!this.journalFolded) rows.push(...shown);
+      }
+      return rows;
+    },
+    // 自用改版：当前选中的是日记（「日记」组，或打了清单标记的日记）时，返回那天的日期键；否则空串
+    activeJournalDate() {
+      const c = this.lists.find((x) => x.key === this.activeKey);
+      return (c && c.date) || '';
+    },
   },
   watch: {
     // 清单列表随父级自动刷新（外部改 tags / 增删清单文件触发重载）后同步本地副本。
@@ -181,6 +224,9 @@ export default {
       async handler(cls) {
         const prevKey = this.activeKey;
         this.lists = (cls && cls.length) ? cls.slice() : [];
+        // 自用改版：左侧第一张露出来的卡片（进度 100% 被藏的、没有任务的日记、收起的「日记」组里的都跳过）。
+        // 一张都没露出来时就先不选——硬选一张藏着的，它会因为「正在看的那张不藏」又冒出来。
+        const first = this.sideRows.find((r) => !r.isSec);
         if (prevKey && this.lists.some((x) => x.key === prevKey)) {
           // 当前选中项仍在：保留选中、同步名称，并重读当前清单的分组——
           // 右侧 groups / 统计是 loadGroups 读文件得到的本地数据，不随 lists 引用自动更新；
@@ -188,8 +234,8 @@ export default {
           const c = this.lists.find((x) => x.key === prevKey);
           if (c) this.activeName = c.name;
           await this.loadGroups(prevKey);
-        } else if (this.lists.length) {
-          await this.selectList(this.lists[0].key);
+        } else if (first) {
+          await this.selectList(first.key);
         } else {
           this.activeKey = '';
           this.activeName = '';
@@ -203,6 +249,15 @@ export default {
   methods: {
     statusIcon, richSummaryNoTags, renderInlineHtml, dateText, timeText, taskFilePath, scheduledText,
     pct(c) { return c.total ? Math.round((c.done / c.total) * 100) : 0; },
+    // 自用改版：点「日记」组名收起 / 展开整组，并记在本机
+    toggleJournalFold() {
+      this.journalFolded = !this.journalFolded;
+      setClJournalFoldedPref(this.journalFolded);
+    },
+    // 自用改版：日记卡片里，日期就是这篇日记那天的任务不再重复显示日期（时间照常显示）
+    sameJournalDay(t) {
+      return !!(this.activeJournalDate && t && t.dueAt && todayKey(Number(t.dueAt)) === this.activeJournalDate);
+    },
     gKey(g) { return g.title || '___ungrouped'; },
     // 描述预览：取第一行文字并去掉 Markdown 符号（描述现在按 Markdown 原文保存）
     firstLine(s) { return descPreview(s); },
@@ -268,9 +323,12 @@ export default {
     },
     // 分组内新建：弹 TaskEditorModal（create 模式），保存时追加到该分组最后一行
     openAdd(g) {
+      // 自用改版：当前这份是日记（「日记」组，或打了清单标记的日记）时，新建任务默认就是这篇日记那天；
+      // 保存时数据层按日记的规矩落位（同一天插进这个分组，换了日期放进那天的日记，无日期进收件箱）
+      const journalDate = this.activeJournalDate;
       new VueModal(this.plugin.app, TaskEditorModal, {
-        open: true, task: null, defaultDate: '', plugin: this.plugin,
-        createIn: { list: this.activeKey, group: g.title || '' },
+        open: true, task: null, defaultDate: journalDate, plugin: this.plugin,
+        createIn: { list: this.activeKey, group: g.title || '', journal: !!journalDate },
         onSaved: () => this.loadGroups(this.activeKey),
         onDeleted: () => this.loadGroups(this.activeKey),
         onSubtasksChanged: () => this.loadGroups(this.activeKey)
@@ -332,8 +390,16 @@ export default {
 .tk-cl-side-h i { color: var(--gold); font-size: 16px; }
 .tk-cl-side-empty {
   padding: 28px 18px; color: var(--ink-soft); font-size: 12.5px; line-height: 1.7; text-align: center;
+  /* 自用改版：提示文案里用 \n 换行，pre-line 让它真的分成两行（原版写的是 <br />，会被原样显示出来） */
+  white-space: pre-line;
 }
 .tk-cl-list { flex: 1; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+/* 自用改版：左侧「日记」组的组名（排在主题清单后面），点一下收起 / 展开整组 */
+.tk-cl-sec { display: flex; align-items: center; gap: 5px; margin-top: 6px; padding: 4px 6px; border-radius: 6px; font-size: 12px; color: var(--ink-soft); cursor: pointer; user-select: none; }
+.tk-cl-sec:hover { color: var(--text-normal); background: var(--background-modifier-hover); }
+.tk-cl-sec-caret { font-size: 11px; transition: transform .15s ease; }
+.tk-cl-sec-caret.open { transform: rotate(90deg); }
+.tk-cl-sec .cnt { font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums; }
 .tk-cl-item { display: flex; align-items: center; gap: 8px; }
 .tk-cl-item-main {
   flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 7px;

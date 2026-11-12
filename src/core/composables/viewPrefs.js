@@ -52,3 +52,13 @@ export function getClMainViewPref() {
 export function setClMainViewPref(view) {
   writeAll({ clMainView: view });
 }
+
+// 自用改版：清单页左侧「日记」组是否收起（默认展开）
+export function getClJournalFoldedPref() {
+  return readAll().clJournalFolded === true;
+}
+
+// 自用改版：记住「日记」组的收起 / 展开（只存本机，不进 data.json）
+export function setClJournalFoldedPref(folded) {
+  writeAll({ clJournalFolded: !!folded });
+}

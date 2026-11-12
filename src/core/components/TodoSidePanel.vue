@@ -181,7 +181,8 @@ export default {
     },
     async readClNoDate() {
       try {
-        const lists = this.checklists.length ? this.checklists : await Tasks.loadChecklists();
+        // 自用改版：自己加载时也去掉清单页「日记」组的条目（日记里的任务都有日期，不进待办池）
+        const lists = this.checklists.length ? this.checklists : (await Tasks.loadChecklists()).filter((c) => !c.journal);
         const files = [];
         for (const c of lists) {
           const r = await Tasks.loadChecklistGroups(c.key);

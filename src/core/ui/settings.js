@@ -320,6 +320,17 @@ export class DadaTodoSettingTab extends PluginSettingTab {
         });
         renderChips();
       }),
+      // 自用改版：清单页显示日记（默认开）。改了之后重载已打开的面板，左侧清单列表立刻按新设置重排
+      row('checklistShowJournal', 'checklistShowJournalDesc', (s) => {
+        s.addToggle((tg) => {
+          tg.setValue(plugin.settings.checklistShowJournal !== false);
+          tg.onChange(async (value) => {
+            plugin.settings.checklistShowJournal = value;
+            await plugin.saveSettings();
+            plugin.reloadOpenViews();
+          });
+        });
+      }),
     ]);
 
     // 分组：视图与日程（周起始 / 时间轴范围 / 时间选择器步长）

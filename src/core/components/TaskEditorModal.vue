@@ -242,7 +242,8 @@ export default {
     // 日记里的主任务，日期就是日记的文件名，去掉日期 = 搬到收件箱；
     // 收件箱、清单里的任务和子任务，日期写在行内，去掉后任务留在原处。
     noDateHint() {
-      if (!this.editing) return this.$t(this.createIn ? 'editor.noDateNewList' : 'editor.noDateNewInbox');
+      // 自用改版：在清单页的日记里新建时，「无日期」和日视图里一样进收件箱
+      if (!this.editing) return this.$t(this.createIn && !this.createIn.journal ? 'editor.noDateNewList' : 'editor.noDateNewInbox');
       const key = String(this.task.date || '');
       const isSub = this.isSubtask || !!this.task.parentGuid;
       if (!isSub && /^\d{4}-\d{2}-\d{2}$/.test(key)) return this.$t('editor.noDateFromDaily', { date: key });

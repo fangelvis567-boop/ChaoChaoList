@@ -230,6 +230,9 @@ export default class DadaTodoPlugin extends Plugin {
       weekStart: data.weekStart ?? 1,
       // 清单识别标记：frontmatter tags 含任一标签的笔记即清单文件
       checklistTags,
+      // 清单页显示日记（自用改版，默认开）：清单页左侧在主题清单后面单独列出「日记」一组，日记不用打清单标记；
+      // 日记里的任务在日 / 周 / 月视图中只按日记算一次
+      checklistShowJournal: data.checklistShowJournal ?? true,
       // 每日笔记加载窗口（天）：以今天为中心的对称窗口（前后各 N 天），默认 'all'；大库可调小以提升加载性能
       dailyLoadWindow: data.dailyLoadWindow || 'all',
       // 任务块配色方案：default（默认）/ morandi（莫兰迪）/ jelly（卡通果冻），默认 default

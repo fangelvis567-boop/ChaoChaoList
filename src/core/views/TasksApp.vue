@@ -64,7 +64,7 @@
 
       <!-- ===== 清单视图（左侧清单列表 + 右侧按 ### 标题分组） ===== -->
       <div v-else-if="view === 'cl'" key="cl" class="tk-clview-wrap">
-        <checklist-view :plugin="plugin" :checklists="checklists" :hide-done="hideDone" :main-view="clMainView" />
+        <checklist-view :plugin="plugin" :checklists="clSidebar" :hide-done="hideDone" :main-view="clMainView" />
       </div>
 
       <!-- ===== 列表视图（独立组件） ===== -->
@@ -193,6 +193,8 @@ export default {
       agendaActiveKey: ymd(new Date()),
       // 清单（frontmatter tags 命中识别标记的 md 文件）
       checklists: [],
+      // 自用改版：清单页左侧用的完整列表＝主题清单 + 「日记」组（带 journal 的条目），只交给清单页
+      clSidebar: [],
       // 清单主区视图（列表 / 分栏）：与顶栏切换按钮联动，持久化到 localStorage
       clMainView: getClMainViewPref(),
       // 子任务悬停浮层（自用改版）：当前悬停的父任务与它在屏幕上的位置
@@ -474,7 +476,9 @@ export default {
       try {
         const [tasks, cls] = await Promise.all([Tasks.loadAll(), Tasks.loadChecklists()]);
         this.tasks = tasks;
-        this.checklists = cls;
+        // 自用改版：「日记」组的条目只给清单页；列表视图的清单筛选、待办池等其余地方仍只看主题清单
+        this.checklists = cls.filter((c) => !c.journal);
+        this.clSidebar = cls;
       }
       catch (e) { this.error = this.$t('app.loadTasksFail') + (e && e.message || e); }
       finally { if (!silent) this.loading = false; }

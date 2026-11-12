@@ -410,16 +410,56 @@ function checklistFileEntries() {
   return out;
 }
 
+// 自用改版：某篇笔记是不是日记（在日记文件夹里、文件名能解析出日期）。是就返回它的日期键（YYYY-MM-DD），否则返回 null。
+// 只看位置和文件名，不看「日记载入范围」：范围只决定读不读，不改变它是日记这件事。
+function journalDateOfPath(path) {
+  const p = String(path || '');
+  const folder = journalFolder();
+  if (folder ? p.indexOf(folder + '/') !== 0 : p.indexOf('/') >= 0) return null;
+  return fileDateKey(p.split('/').pop());
+}
+
+// 自用改版：清单页是否单独列出「日记」一组（设置「清单页显示日记」checklistShowJournal，默认开）
+function showJournalInChecklists() {
+  return !(plugin.settings && plugin.settings.checklistShowJournal === false);
+}
+
+// 自用改版：打了清单标记的笔记里，去掉已经作为日记读过的那些（dailyFiles 是这一轮已读的日记 [{ key, path }]）。
+// 原先一篇日记打了清单标记，汇总任务时会按日记读一遍、再按清单读一遍，带 📅 的任务在日 / 周 / 月视图里出现两份。
+function checklistEntriesExceptDaily(dailyFiles) {
+  const dailyPaths = new Set(dailyFiles.map((d) => d.path));
+  return checklistFileEntries().filter((e) => !dailyPaths.has(e.path));
+}
+
 // ---------- 读 ----------
-// 列出全部清单（文件名即清单名，附任务统计）
+// 列出全部清单（文件名即清单名，附任务统计）。
+// 自用改版：「清单页显示日记」打开时（默认开），载入范围内的日记不用打清单标记，单独排在主题清单后面，
+// 按日期从新到旧，带 journal: true；打过清单标记的日记也只归到这一组，不会出现两张卡片。
+// 本身是日记的条目都带 date（日记那天），清单页在它的分组里新建任务时以这天为默认日期。
 async function listChecklists() {
+  const stat = async (path, key) => {
+    const all = flattenTasks((await readTasks(path, key)).roots);
+    return { total: all.length, done: all.filter((n) => n.completed).length };
+  };
+  const journalOn = showJournalInChecklists();
+  const daily = journalOn ? listDailyFiles() : [];
   const items = [];
-  for (const e of checklistFileEntries()) {
-    const doc = await readTasks(e.path, e.key);
-    const all = flattenTasks(doc.roots);
-    items.push({ key: e.key, name: e.name, total: all.length, done: all.filter((n) => n.completed).length });
+  for (const e of (journalOn ? checklistEntriesExceptDaily(daily) : checklistFileEntries())) {
+    const item = Object.assign({ key: e.key, name: e.name }, await stat(e.path, e.key));
+    const jd = journalDateOfPath(e.path);
+    if (jd) item.date = jd;
+    items.push(item);
   }
   items.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'));
+  const days = daily.slice().sort((a, b) => b.key.localeCompare(a.key) || a.path.localeCompare(b.path, 'zh-Hans-CN'));
+  for (const d of days) {
+    items.push(Object.assign({
+      key: CL_PREFIX + d.path.replace(/\.md$/i, ''),
+      name: d.path.split('/').pop().replace(/\.md$/i, ''),
+      journal: true,
+      date: d.key
+    }, await stat(d.path, d.key)));
+  }
   return res(200, { ok: true, count: items.length, items });
 }
 
@@ -429,6 +469,10 @@ export async function loadChecklistGroups(listKey) {
   const path = taskFilePath(listKey);
   if (!path) return res(400, { ok: false, reason: 'bad_list' });
   const doc = await readTasks(path, listKey);
+  // 自用改版：这份「清单」本身是日记时，任务按日记的规矩编号（日期就是这篇日记那天）。
+  // 这样在清单页里勾选、编辑、改日期，效果和在日视图里一样：改日期会把任务整块挪到那天的日记，不写行尾 📅。
+  const jd = journalDateOfPath(path);
+  const recOf = (n) => (jd ? recordOf(jd, n, { file: path }) : recordOf(listKey, n));
   // 收集 ### 标题的行号与文字（仅三级标题，与用户约定一致）
   const headings = [];
   doc.lines.forEach((line, idx) => {
@@ -441,7 +485,7 @@ export async function loadChecklistGroups(listKey) {
   const bySiblings = (a, b) => priorityRank(b.rec.priority) - priorityRank(a.rec.priority)
     || (a.rec.dueAt || 0) - (b.rec.dueAt || 0);
   // 把任务树的每个节点包成 { rec: 任务记录, kids: 子节点 }
-  const wrap = (n) => ({ rec: recordOf(listKey, n), kids: (n.children || []).map(wrap) });
+  const wrap = (n) => ({ rec: recOf(n), kids: (n.children || []).map(wrap) });
   // 按上面的规则把一组兄弟节点（连同各自的后代）展开成一维列表：父在前，子紧随其后
   const emit = (items, out) => {
     for (const it of items.slice().sort(bySiblings)) { out.push(it.rec); emit(it.kids, out); }
@@ -478,8 +522,9 @@ async function listTasks(opts = {}) {
   } else {
     files = listDailyFiles();
     files.push({ key: INBOX_KEY, path: taskFilePath(INBOX_KEY) });
-    // 清单文件参与默认聚合，但仅汇入含 📅 日期的任务；无日期任务只在清单视图出现
-    files.push(...checklistFileEntries().map((e) => Object.assign(e, { aggregateOnly: true })));
+    // 清单文件参与默认聚合，但仅汇入含 📅 日期的任务；无日期任务只在清单视图出现。
+    // 自用改版：本身就是日记的清单文件上面已经按日记读过，这里跳过，免得带 📅 的任务出现两份
+    files.push(...checklistEntriesExceptDaily(files).map((e) => Object.assign(e, { aggregateOnly: true })));
   }
   const items = [];
   for (const f of files) {
@@ -529,10 +574,12 @@ export async function collectTags() {
     if (Array.isArray(tags)) for (const g of tags) counts.set(g, (counts.get(g) || 0) + 1);
     if (Array.isArray(node.children)) node.children.forEach(bump);
   };
+  const daily = listDailyFiles();
   const files = [
-    ...listDailyFiles(),
+    ...daily,
     { key: INBOX_KEY, path: taskFilePath(INBOX_KEY) },
-    ...checklistFileEntries(),
+    // 自用改版：本身是日记的清单文件已经按日记统计过，不重复计数
+    ...checklistEntriesExceptDaily(daily),
   ];
   for (const f of files) {
     try {
@@ -610,11 +657,29 @@ export async function createChecklistTask(listKey, groupTitle, task) {
   if (!isListKey(listKey)) return res(400, { ok: false, reason: 'bad_list' });
   const path = taskFilePath(listKey);
   if (!path) return res(400, { ok: false, reason: 'bad_list' });
+  // 自用改版：这份「清单」本身是日记时（清单页的「日记」组，或打了清单标记的日记），按日记的规矩新建：
+  // 日期就是这篇日记那天 → 插进它的对应分组，日期不写进行内（文件名就是日期）；
+  // 换成别的日期或选了「无日期」→ 和日视图里新建一样，放进那天的日记 / 收件箱，不留在这篇日记里。
+  const jd = journalDateOfPath(path);
+  if (jd) {
+    const day = (t.startAt != null && t.startAt !== '') ? todayKey(Number(t.startAt)) : (t.dueAt ? todayKey(Number(t.dueAt)) : '');
+    if (day !== jd) {
+      const elsewhere = Object.assign({}, t);
+      delete elsewhere.list;
+      return createTask(elsewhere);
+    }
+  }
   await ensureTaskFile(listKey, path);
   const doc = await readTasks(path, listKey);
-  const node = nodeFromTask(t, listKey, { addDoneDate: addDoneDateEnabled() });
-  if (t.dueAt) node.due = todayKey(Number(t.dueAt));
-  if (t.startAt) node.start = todayKey(Number(t.startAt));
+  const node = nodeFromTask(t, jd || listKey, { addDoneDate: addDoneDateEnabled() });
+  if (jd) {
+    // 日记：文件名就是开始日，不写 🛫；结束日晚于这天（跨日期）时才写行内 📅（与 createTask 的日记分支一致）
+    node.start = '';
+    node.due = (t.dueAt != null && todayKey(Number(t.dueAt)) > jd) ? todayKey(Number(t.dueAt)) : '';
+  } else {
+    if (t.dueAt) node.due = todayKey(Number(t.dueAt));
+    if (t.startAt) node.start = todayKey(Number(t.startAt));
+  }
   // 整块写入（任务行 + 描述 + 描述里提升出来的子任务）。
   // 原先只写任务行，在清单分组里新建任务时填的描述会被丢掉。
   const newLines = serializeBlock(node, '');
@@ -639,7 +704,7 @@ export async function createChecklistTask(listKey, groupTitle, task) {
   lines.splice(insertAt, 0, ...newLines);
   await writeTasks(path, doc.head, lines);
   const created = Object.assign({}, node, { lineNo: insertAt });
-  return res(201, { ok: true, task: recordOf(listKey, created) });
+  return res(201, { ok: true, task: jd ? recordOf(jd, created, { file: path }) : recordOf(listKey, created) });
 }
 
 // 将清单内任务移动到另一个分组（同文件内移动整块：删旧块 + 插入到目标分组末尾）。
