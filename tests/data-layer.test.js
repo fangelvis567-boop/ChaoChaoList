@@ -9,8 +9,10 @@ import {
 } from '../src/core/api/tasks.js';
 import {
   parseTasks, serializeBlock, collectLineNos, splitDescription, descPreview,
-  timeText, spansDays, moveToDay, shiftSpanToDay, tagMapper, rewriteTagsInText, cleanTagName
+  timeText, spansDays, moveToDay, shiftSpanToDay, tagMapper, rewriteTagsInText, cleanTagName,
+  levelToPriorityEmoji
 } from '../src/core/composables/tasks-logic.js';
+import { buildMatrixWidget, buildWidgetData, widgetTitle } from '../src/core/composables/widgetSnapshot.js';
 import { ReminderService } from '../src/core/services/reminder.js';
 import { buildCalendarTasks, subProgress, visibleSubtasks } from '../src/core/composables/subtasks.js';
 import { buildChecklistRows } from '../src/core/composables/checklistRows.js';
@@ -694,6 +696,68 @@ test('标签组：移进组、给组改名、移出组、解散组，都按「#�
   await run({ kind: 'rename', from: '研究/实验', to: '实验' });
   await run({ kind: 'dissolve', from: '研究' });
   eq(v.read(LIST), HEAD_LIST + '- [ ] 甲 #论文 📅 2026-11-12\n- [ ] 乙 #实验\n', '移出组、解散组');
+});
+
+// ============================================================
+// 十、Mac 桌面小组件的数据（四象限）
+// ============================================================
+
+/** 测试用的界面文字：只认小组件用到的几个键，其余原样返回键名 */
+const fakeT = (key, p) => ({
+  'app.viewMatrix': '四象限', 'app.matrixEmpty': '暂无任务', 'app.widgetMore': '还有 {{n}} 条',
+  'app.matrixTitleHigh': '重要且紧急', 'app.matrixTitleMedium': '重要不紧急',
+  'app.matrixTitleLow': '紧急不重要', 'app.matrixTitleNone': '不重要不紧急'
+}[key] || key).replace('{{n}}', p && p.n);
+/** 只取每格的行：[[文字, 缩进, 是否做完], …]，方便逐格比对 */
+const quadLines = (m) => m.quadrants.map((q) => q.items.map((i) => [i.text, i.depth, i.done]));
+
+test('四象限小组件：按优先级分格、按到期时间排；子任务缩进跟着主任务；隐藏已完成、折叠都和面板一致', async () => {
+  const [H, M, L] = ['high', 'medium', 'low'].map(levelToPriorityEmoji);
+  vaultWith({
+    'Inbox.md': HEAD_INBOX
+      + `- [ ] 没日期的高 #财务 ${H}\n`
+      + `- [ ] 以后的高 ${H} 📅 2026-11-20\n`
+      + `- [ ] 过期的高 [申请书](https://example.com/a) ${H} 📅 2026-11-01\n`
+      + `- [x] 做完的高 ${H} 📅 2026-11-02 ✅ 2026-11-03\n`
+      + `- [-] 取消的高 ${H}\n`
+      + `- [ ] 中 ${M} 📅 2026-11-12\n\t- [ ] 子任务甲\n\t- [x] 子任务乙 ✅ 2026-11-10\n`
+      + `- [ ] 低 ${L}\n`
+      + '- [ ] 普通 📅 2026-11-13\n'
+  });
+  const tasks = body(await loadAll()).items;
+
+  const m = buildMatrixWidget(tasks, { hideDone: true, t: fakeT });
+  eq([m.title, m.emptyText, m.moreText], ['四象限', '暂无任务', '还有 {n} 条'], '标题和提示文字');
+  eq(m.quadrants.map((q) => [q.level, q.title, q.color]), [
+    ['high', '重要且紧急', '#e0584f'], ['medium', '重要不紧急', '#e0a93b'],
+    ['low', '紧急不重要', '#4a90d2'], ['none', '不重要不紧急', '#4caf7d']
+  ], '四格的顺序、标题、颜色');
+  eq(quadLines(m), [
+    [['过期的高 申请书', 0, false], ['以后的高', 0, false], ['没日期的高', 0, false]],
+    [['中', 0, false], ['子任务甲', 1, false]],
+    [['低', 0, false]],
+    [['普通', 0, false]]
+  ], '隐藏已完成：过期的在最上、没日期的在最后，标签去掉、链接留文字，做完的主任务和子任务都不列');
+  eq(m.quadrants.map((q) => q.total), [3, 2, 1, 1], '每格的行数');
+
+  const shown = buildMatrixWidget(tasks, { hideDone: false, t: fakeT });
+  eq(quadLines(shown).slice(0, 2), [
+    [['过期的高 申请书', 0, false], ['以后的高', 0, false], ['没日期的高', 0, false], ['做完的高', 0, true]],
+    [['中', 0, false], ['子任务甲', 1, false], ['子任务乙', 1, true]]
+  ], '显示已完成：做完的接在待办后面；取消的始终不算');
+
+  const folded = buildMatrixWidget(tasks, { hideDone: true, t: fakeT, isFolded: (t) => t.summary === '中' });
+  eq(quadLines(folded)[1], [['中', 0, false]], '折叠了子任务的主任务不列子任务');
+});
+
+test('小组件数据：行数太多时截短但记下总数；点小组件打开的地址带库名、视图', () => {
+  const tasks = Array.from({ length: 5 }, (_, i) => ({ summary: '任务' + (i + 1), dueAt: ms(2026, 11, 10 + i) }));
+  const d = buildWidgetData(tasks, { vault: "我的 库'", hideDone: true, t: fakeT, maxItems: 3 });
+  eq(d.version, 1, '数据格式版本');
+  eq(d.openUrl.matrix, "obsidian://chaochao-list?vault=%E6%88%91%E7%9A%84%20%E5%BA%93'&view=matrix", '打开地址');
+  const none = d.matrix.quadrants[3];
+  eq([none.total, none.items.map((i) => i.text)], [5, ['任务1', '任务2', '任务3']], '只写前 3 行，总数仍是 5');
+  eq([widgetTitle('读 [论文](https://x.y/z) #科研 '), widgetTitle('#只有标签')], ['读 论文', '#只有标签'], '标题的写法');
 });
 
 // ---------- 逐个运行并汇总 ----------

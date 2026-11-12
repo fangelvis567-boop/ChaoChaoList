@@ -69,12 +69,8 @@ import { renderInlineHtml, dateText, timeText, statusIcon, priorityToLevel, leve
 //   右上 橙 重要不紧急   → 中优先级
 //   左下 蓝 紧急不重要   → 低优先级
 //   右下 绿 不重要不紧急 → 无优先级
-const QUADS = [
-  { key: 'tl', level: 'high',   titleKey: 'app.matrixTitleHigh',   color: '#e0584f' },
-  { key: 'tr', level: 'medium', titleKey: 'app.matrixTitleMedium', color: '#e0a93b' },
-  { key: 'bl', level: 'low',    titleKey: 'app.matrixTitleLow',    color: '#4a90d2' },
-  { key: 'br', level: 'none',   titleKey: 'app.matrixTitleNone',   color: '#4caf7d' }
-];
+// 四个格子的定义（自用改版）放在 composables/matrixQuads.js，Mac 桌面小组件也用同一份
+import { MATRIX_QUADS as QUADS } from '../../composables/matrixQuads.js';
 
 const pad = (n) => (n < 10 ? '0' + n : '' + n);
 function ymd(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }

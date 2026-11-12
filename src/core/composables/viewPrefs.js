@@ -37,9 +37,17 @@ export function getTaskViewPref() {
   };
 }
 
+// 自用改版：「隐藏已完成」、子任务折叠这类会改变 Mac 桌面小组件内容的偏好变了时，
+// 在 window 上广播这个事件，services/widgetExport.js 听到后重新导出小组件数据
+export const PREFS_EVENT = 'chaochao:widget-prefs-changed';
+export function notifyWidgetPrefsChanged() {
+  try { window.dispatchEvent(new CustomEvent(PREFS_EVENT)); } catch (e) { /* 没有 window（测试环境）时忽略 */ }
+}
+
 // 局部更新任务视图偏好（只传变化的字段即可）
 export function setTaskViewPref(patch) {
   writeAll(patch);
+  if (patch && Object.prototype.hasOwnProperty.call(patch, 'hideDone')) notifyWidgetPrefsChanged();
 }
 
 // 读取清单主区展示方式（列表 / 分栏）

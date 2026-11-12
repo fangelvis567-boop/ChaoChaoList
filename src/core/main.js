@@ -3,11 +3,13 @@ import { createApp, reactive } from 'vue';
 import TasksApp from './views/TasksApp.vue';
 import { initTasksApi, ensureInboxFile } from './api/tasks.js';
 import { setColorScheme, setWeekStart, setTagColors } from './composables/tasks-logic.js';
-import { normalizeMenuViews, normalizeMenuHidden } from './composables/viewMenu.js';
+import { normalizeMenuViews, normalizeMenuHidden, VIEW_MENU_ITEMS } from './composables/viewMenu.js';
+import { setTaskViewPref } from './composables/viewPrefs.js';
 import { setupDevReload } from './dev/devReload.js';
 import { setupHoverPreview, teardownHoverPreview } from './hoverPreview.js';
 import { DadaTodoSettingTab } from './ui/settings.js';
 import { ReminderService } from './services/reminder.js';
+import { WidgetExportService } from './services/widgetExport.js';
 import { initI18n, t } from './i18n/index.js';
 import { tooltip } from './directives/tooltip.js';
 import { VueModal } from './ui/VueModal.js';
@@ -147,8 +149,38 @@ export default class DadaTodoPlugin extends Plugin {
     this.reminder = new ReminderService(this);
     this.reminder.start();
 
+    // Mac 桌面小组件（自用改版）：任务有变化时把四象限的内容写到本机，供「ChaoChaoList 小组件」显示。
+    // 只在 Mac 桌面版生效，设置里可关（widgetExport）；读写范围见 services/widgetExport.js 开头
+    this.widgetExport = new WidgetExportService(this);
+    this.widgetExport.start();
+    // 点小组件时打开的地址：obsidian://chaochao-list?vault=库名&view=matrix → 打开面板并切到四象限
+    this.registerObsidianProtocolHandler('chaochao-list', (params) => { this.openFromUri(params); });
+
     // 明暗主题切换后，自动重算依赖主题的配色（如深色 / 浅色变体、块内文字等），无需手动切换视图
     this.registerThemeColorRefresh();
+  }
+
+  /**
+   * 处理 obsidian://chaochao-list?view=… （Mac 桌面小组件点击时打开）：打开面板并切到指定视图。
+   * view 不认识时只打开面板。面板还没打开时先记下视图，面板打开后就停在那个视图上。
+   * @param {Object} params Obsidian 解析好的网址参数（含 view）
+   */
+  async openFromUri(params) {
+    const view = String((params && params.view) || '');
+    const known = VIEW_MENU_ITEMS.some((v) => v.key === view);
+    if (known) setTaskViewPref({ view });
+    await this.activateView();
+    if (!known) return;
+    const leaf = this.app.workspace.getLeavesOfType(this.viewType)[0];
+    const root = leaf && leaf.view && leaf.view.vueRoot;
+    if (root && root.view !== view && typeof root.switchView === 'function') root.switchView(view);
+  }
+
+  /** 设置里开关「Mac 桌面小组件」后调用：按新设置启动或停止导出 */
+  applyWidgetExport() {
+    if (!this.widgetExport) return;
+    if (this.settings.widgetExport === false) this.widgetExport.stop();
+    else { this.widgetExport.start(); this.widgetExport.schedule(); }
   }
 
   /** 监听 Obsidian 明暗主题切换，自动重算依赖主题的配色（紫罗兰 dark/light 变体等） */
@@ -197,6 +229,7 @@ export default class DadaTodoPlugin extends Plugin {
 
   onunload() {
     if (this.reminder) { this.reminder.stop(); this.reminder = null; }
+    if (this.widgetExport) { this.widgetExport.stop(); this.widgetExport = null; }
     this.app.workspace.detachLeavesOfType(this.viewType);
     // 反注册核心「页面预览」来源，清理设置项里的本插件条目
     teardownHoverPreview(this);
@@ -217,6 +250,8 @@ export default class DadaTodoPlugin extends Plugin {
       menuStyle: data.menuStyle || 'horizontal',
       // 是否显示农历与节假日（日 / 周 / 月视图表头与日历格）
       showLunar: data.showLunar ?? true,
+      // Mac 桌面小组件（自用改版）：是否把四象限的内容写到本机供小组件显示；默认开，只在 Mac 桌面版起作用
+      widgetExport: data.widgetExport ?? true,
       // 完成任务时是否在任务行追加「✅ 完成日期」标记；默认开。关闭后完成不写 ✅，开始/结束等日期标记不受影响
       addDoneDateMarker: data.addDoneDateMarker ?? true,
       // 无日期任务的存放文件（相对库根目录）

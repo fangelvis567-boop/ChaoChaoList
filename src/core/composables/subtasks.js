@@ -9,6 +9,7 @@
 // （buildCalendarTasks），日历类视图（日 / 周 / 月 / 日程）用这份带副本的任务表。
 import { reactive } from 'vue';
 import { todayKey, spansDays } from './tasks-logic.js';
+import { notifyWidgetPrefsChanged } from './viewPrefs.js';
 
 /** 是否有子任务 */
 export function hasSubtasks(t) {
@@ -100,4 +101,6 @@ export function toggleSubFold(t) {
   if (folded.has(k)) folded.delete(k);
   else folded.add(k);
   saveFolded();
+  // 四象限小组件会按折叠状态决定列不列子任务：通知它重新导出（自用改版）
+  notifyWidgetPrefsChanged();
 }

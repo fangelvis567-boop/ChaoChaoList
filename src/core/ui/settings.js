@@ -4,6 +4,7 @@ import { TagColorModal, ConfirmModal } from './modals.js';
 import { countInboxTasks, migrateInboxTasks, loadAll, loadChecklists, collectTags, editTags } from '../api/tasks.js';
 import { setColorScheme, setWeekStart, tagColorOf, usedTagColors, EXTRA_SCHEME_OPTIONS, isImeKey, tagMapper } from '../composables/tasks-logic.js';
 import { VIEW_MENU_ITEMS, DEFAULT_MENU_VIEWS, reorderViews } from '../composables/viewMenu.js';
+import { WidgetExportService } from '../services/widgetExport.js';
 
 // （自用改版）原先这里有「自检新版」：每次打开设置页都联网读取作者仓库的版本号。
 // 自用改版不跟随作者更新，已整段去掉；去掉后整个插件不再有任何联网请求。
@@ -402,6 +403,17 @@ export class DadaTodoSettingTab extends PluginSettingTab {
           });
         });
       }),
+      // Mac 桌面小组件（自用改版）：只在 Mac 桌面版显示这一项
+      ...(WidgetExportService.supported() ? [row('widgetExport', 'widgetExportDesc', (s) => {
+        s.addToggle((tg) => {
+          tg.setValue(plugin.settings.widgetExport !== false);
+          tg.onChange(async (value) => {
+            plugin.settings.widgetExport = value;
+            await plugin.saveSettings();
+            plugin.applyWidgetExport();
+          });
+        });
+      })] : []),
     ]);
 
     // 全天任务时间行的 DOM：由开关联动显示 / 隐藏（声明式渲染后再补一次，避免样式被覆盖）
