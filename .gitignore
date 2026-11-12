@@ -1,6 +1,8 @@
 node_modules/
 dist/
 chaochao-list/
+# Mac 桌面小组件的编译产物（mac-widget/scripts/install.sh 生成）
+mac-widget/build/
 .codebuddy/
 *.log
 .DS_Store

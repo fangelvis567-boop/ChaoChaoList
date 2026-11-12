@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  小组件扩展的权限：
+  - app-sandbox：系统要求小组件运行在沙盒里（默认什么文件都读不了）；
+  - temporary-exception.files.home-relative-path.read-only：只额外允许「读」
+    ~/Library/Application Support/ChaoChaoList/ 这一个文件夹（插件把小组件数据写在这里）。
+  不能写任何文件，也没有联网权限。
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+	<array>
+		<string>/Library/Application Support/ChaoChaoList/</string>
+	</array>
+</dict>
+</plist>

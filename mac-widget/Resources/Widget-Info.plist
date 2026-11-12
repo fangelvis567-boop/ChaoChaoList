@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  小组件扩展 ChaoChaoListWidgetsExtension.appex 的说明文件（装在宿主程序的 Contents/PlugIns/ 里）。
+  NSExtensionPointIdentifier = com.apple.widgetkit-extension：告诉系统这是一个小组件扩展。
+  CFBundleIdentifier 必须以宿主程序的标识 app.chaochaolist.widgets 开头。
+  版本号与 App-Info.plist 保持一致；改了小组件的界面或数据格式时把两边的版本号一起加大。
+  注意：不要用 plutil -replace 改这个文件，它会删掉这段注释；直接编辑即可。
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh_CN</string>
+	<key>CFBundleDisplayName</key>
+	<string>ChaoChaoList</string>
+	<key>CFBundleExecutable</key>
+	<string>ChaoChaoListWidgetsExtension</string>
+	<key>CFBundleIdentifier</key>
+	<string>app.chaochaolist.widgets.extension</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>ChaoChaoList</string>
+	<key>CFBundlePackageType</key>
+	<string>XPC!</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.1</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>MacOSX</string>
+	</array>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.widgetkit-extension</string>
+	</dict>
+</dict>
+</plist>
