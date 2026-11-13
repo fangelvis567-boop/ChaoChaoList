@@ -6,6 +6,7 @@ import { setColorScheme, setWeekStart, setTagColors } from './composables/tasks-
 import { normalizeMenuViews, normalizeMenuHidden, VIEW_MENU_ITEMS } from './composables/viewMenu.js';
 import { setTaskViewPref } from './composables/viewPrefs.js';
 import { initDeviceUser } from './composables/deviceUser.js';
+import { initViewFilter } from './composables/viewFilter.js';
 import { setupDevReload } from './dev/devReload.js';
 import { setupHoverPreview, teardownHoverPreview } from './hoverPreview.js';
 import { DadaTodoSettingTab } from './ui/settings.js';
@@ -101,6 +102,8 @@ export default class DadaTodoPlugin extends Plugin {
     initTasksApi(this);
     // 「这台设备的使用者」存在本机（不进 data.json），读写要用到 app（自用改版）
     initDeviceUser(this.app);
+    // 按标签筛选（自用改版）：选了什么存在本机，使用者名单读 this.settings.userTags
+    initViewFilter(this);
     // 核心「日记」插件未启用的提醒改为面板顶部提醒条（TasksApp 内，随面板实时检测）
 
     // 收件箱文件不存在时创建（首次使用 / 用户改路径后）；
@@ -304,6 +307,8 @@ export default class DadaTodoPlugin extends Plugin {
       snapMinutes: [5, 10, 15, 30].includes(Number(data.snapMinutes)) ? Number(data.snapMinutes) : 30,
       // 计划时间（⏳ scheduled）：默认关闭；开启后编辑弹窗可设置计划日期，各视图显示计划日期徽标
       showScheduled: data.showScheduled === true,
+      // 使用者名单（自用改版）：哪些标签代表「人」（如 🌻、🥕），按标签筛选时「谁的」那一行按它列出；默认空
+      userTags: Array.isArray(data.userTags) ? data.userTags.map((s) => String(s == null ? '' : s).trim()).filter(Boolean) : [],
       // 视图菜单：完整视图顺序（含隐藏项，保持其排序记忆）；默认全部按当前顺序
       menuViews: normalizeMenuViews(data.menuViews),
       // 视图菜单：隐藏的视图 key（不显示在菜单上，但保留排序，可随时在设置页重新勾选显示）

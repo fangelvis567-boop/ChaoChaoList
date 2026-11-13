@@ -2,7 +2,7 @@ import { PluginSettingTab, Notice, AbstractInputSuggest, TFolder, setIcon } from
 import { t } from '../i18n/index.js';
 import { TagColorModal, ConfirmModal } from './modals.js';
 import { countInboxTasks, migrateInboxTasks, loadAll, loadChecklists, collectTags, editTags } from '../api/tasks.js';
-import { setColorScheme, setWeekStart, tagColorOf, usedTagColors, EXTRA_SCHEME_OPTIONS, isImeKey, tagMapper } from '../composables/tasks-logic.js';
+import { setColorScheme, setWeekStart, tagColorOf, usedTagColors, EXTRA_SCHEME_OPTIONS, isImeKey, tagMapper, cleanTagName } from '../composables/tasks-logic.js';
 import { VIEW_MENU_ITEMS, DEFAULT_MENU_VIEWS, reorderViews } from '../composables/viewMenu.js';
 import { WidgetExportService } from '../services/widgetExport.js';
 import { getDeviceUserTag, setDeviceUserTag } from '../composables/deviceUser.js';
@@ -521,7 +521,9 @@ export class DadaTodoSettingTab extends PluginSettingTab {
       row('deviceUser', 'deviceUserDesc', (s) => {
         s.addText((tx) => {
           tx.setPlaceholder(T('deviceUserPh'));
-          tx.setValue(getDeviceUserTag());
+          // 面板此刻用的是哪个使用者：离开输入框时和它不一样了，才去刷新面板
+          let applied = getDeviceUserTag();
+          tx.setValue(applied);
           // 边输入边保存：能当标签用的名字（或清空）马上存下；不能用的先不存，原来的设置不变
           tx.onChange((value) => { setDeviceUserTag(value); });
           // 离开输入框时：把框里的内容换成真正生效的样子（去掉 #、空格变 -）；
@@ -530,8 +532,51 @@ export class DadaTodoSettingTab extends PluginSettingTab {
             const r = setDeviceUserTag(tx.getValue());
             if (!r.ok) new Notice(t('app.tagNameInvalid'));
             tx.setValue(r.tag);
+            // 使用者变了：按标签筛选的默认值（只看这台设备的使用者）跟着变，刷新已打开的面板
+            if (r.tag !== applied) {
+              applied = r.tag;
+              plugin.reloadOpenViews();
+            }
           });
         });
+      }),
+      // 使用者名单（自用改版）：哪些标签代表「人」。按标签筛选时，「谁的」那一行按它列出（「这台设备的使用者」自动算在内）。
+      // 和「这台设备的使用者」不同，它存进 data.json：两个人的名单本来就该一样。
+      // 写法照搬上面「清单标签」的胶囊编辑器：回车添加，× 移除
+      row('userTags', 'userTagsDesc', (s) => {
+        const editor = s.controlEl.createDiv('dt-tags-editor');
+        const list = () => (Array.isArray(plugin.settings.userTags) ? plugin.settings.userTags : []);
+        const renderChips = () => {
+          editor.querySelectorAll('.dt-chip').forEach((n) => n.remove());
+          const inputEl = editor.querySelector('input');
+          for (const tag of list()) {
+            const chip = editor.createDiv('dt-chip');
+            chip.createSpan({ text: tag });
+            const del = chip.createEl('button', { text: '×' });
+            del.setAttribute('aria-label', tag);
+            del.addEventListener('click', () => save(list().filter((x) => x !== tag)));
+            if (inputEl) editor.insertBefore(chip, inputEl); else editor.appendChild(chip);
+          }
+        };
+        // 存下新名单，重画胶囊，并刷新已打开的面板（筛选里「谁的」那一行跟着变）
+        const save = async (next) => {
+          plugin.settings.userTags = next;
+          await plugin.saveSettings();
+          renderChips();
+          plugin.reloadOpenViews();
+        };
+        const tagInput = editor.createEl('input', { type: 'text', placeholder: T('userTagsPh') });
+        tagInput.addEventListener('keydown', (e) => {
+          // 输入法组字中的回车只上屏候选词，不提交
+          if (isImeKey(e)) return;
+          if (e.key !== 'Enter' || !tagInput.value.trim()) return;
+          e.preventDefault();
+          const name = cleanTagName(tagInput.value);
+          if (!name) { new Notice(t('app.tagNameInvalid')); return; }
+          tagInput.value = '';
+          if (list().indexOf(name) < 0) save(list().concat([name]));
+        });
+        renderChips();
       }),
     ]);
 

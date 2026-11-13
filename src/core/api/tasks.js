@@ -436,9 +436,15 @@ function checklistEntriesExceptDaily(dailyFiles) {
 // 自用改版：「清单页显示日记」打开时（默认开），载入范围内的日记不用打清单标记，单独排在主题清单后面，
 // 按日期从新到旧，带 journal: true；打过清单标记的日记也只归到这一组，不会出现两张卡片。
 // 本身是日记的条目都带 date（日记那天），清单页在它的分组里新建任务时以这天为默认日期。
-async function listChecklists() {
+// 自用改版（按标签筛选）：opts.match 是「这条主任务该不该显示」的判断函数（见 composables/viewFilter.js）。
+// 传了它，任务统计只数通过的主任务和它们下面的子任务，左侧卡片上的进度才和右侧显示的对得上。
+async function listChecklists(opts = {}) {
+  const match = typeof opts.match === 'function' ? opts.match : null;
   const stat = async (path, key) => {
-    const all = flattenTasks((await readTasks(path, key)).roots);
+    let roots = (await readTasks(path, key)).roots;
+    // 解析出来的节点上没有 tags 字段，标签要从标题里现拆（和 collectTags 一样）
+    if (match) roots = roots.filter((n) => match({ tags: splitSummary(n.summary).tags }));
+    const all = flattenTasks(roots);
     return { total: all.length, done: all.filter((n) => n.completed).length };
   };
   const journalOn = showJournalInChecklists();
@@ -570,7 +576,7 @@ export async function getDetail(guid) {
   const r = await loadByDate(g.dateKey);
   return r.body.items.find((t) => t.guid === guid) || null;
 }
-export const loadChecklists = () => listChecklists();
+export const loadChecklists = (opts) => listChecklists(opts);
 
 // ---------- 批量改标签（自用改版：标签管理——删除、改名、移进移出标签组） ----------
 // 标签写在任务行里，没有单独存，所以改标签 = 把所有任务行里的这个标签一起改掉。

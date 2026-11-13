@@ -85,7 +85,8 @@ export class ReminderService {
       const now = Date.now();
       let tasks = [];
       try {
-        tasks = (await Tasks.loadAll()) || [];
+        // 自用改版：提醒不跟着「按标签筛选」走——筛选只管面板显示什么，没显示的任务到点照样提醒
+        tasks = (await Tasks.loadAll({ unfiltered: true })) || [];
       } catch (e) {
         // 日记插件未启用 / 读取失败：只记日志，不打扰用户（下一轮继续尝试）
         console.warn('[DadaTodo] 提醒扫描读取任务失败：', e);

@@ -109,8 +109,10 @@
 // 列表视图（所有）：左侧筛选 + 右侧分组列表 / 卡片。
 // 共享状态与方法都在父级（ctx）；仅「快速新增」交互在此组件内（需本地 ref 聚焦）。
 import { Tasks } from '../../composables/useTasks.js';
-import { isImeKey, withTag } from '../../composables/tasks-logic.js';
+import { Notice } from 'obsidian';
+import { isImeKey, withTag, splitSummary } from '../../composables/tasks-logic.js';
 import { getDeviceUserTag } from '../../composables/deviceUser.js';
+import { getTaskMatcher } from '../../composables/viewFilter.js';
 import TaskFilters from './TaskFilters.vue';
 import TaskRow from './TaskRow.vue';
 
@@ -136,6 +138,9 @@ export default {
       try {
         // 选中清单时，新任务直接写入该清单文件
         await Tasks.createTask(this.ctx.activeList ? { summary, list: this.ctx.activeList } : { summary });
+        // 自用改版：新任务不在当前「按标签筛选」里时提示一句，免得以为没加上
+        const match = getTaskMatcher();
+        if (match && !match({ tags: splitSummary(summary).tags })) new Notice(this.$t('app.filterHidesNew'));
         await this.ctx.reload();
         this.ctx.setQuick('');
         this.$nextTick(() => { if (this.$refs.quickInput) this.$refs.quickInput.focus(); });

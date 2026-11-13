@@ -27,6 +27,7 @@
 - **Subtasks** — indented lines become nested subtasks of any depth
 - **Task priority** — mark tasks high / medium / low (🔺 / 🔼 / 🔽); the format is read & write compatible with the obsidian-tasks plugin, set right in the task editor
 - **Tag colors** — assign a color to any tag in settings: task blocks, agenda cards and tag pills all pick it up; click the color dot in the list sidebar to change it anytime
+- **Filter by tag in every view** — a filter button in the top bar of every view narrows all views at once: *Who* (the user tags such as 🌻 / 🥕 plus "Unassigned" — at least one stays selected) and *Tags* (any other tags, multi-select; a task needs any one of them). Subtasks follow their parent task. The choice is remembered on this device only, and the Mac desktop widgets show the same filtered tasks
 - **Drag to reschedule** — drag tasks between days, or drag the handles on the timeline to fine-tune start / end times
 - **Option/Alt + drag to copy** — hold Option (Mac) / Alt or Ctrl (Windows·Linux) while dragging to drop a copy at the target; the original stays put. In the month view the copy keeps its original times and only changes the date; on the week / day timeline the drop point becomes the new start time (original duration preserved)
 - **Customizable view menu** — choose which views appear in the switcher menu and drag to reorder them; hidden views keep their order and can be restored anytime
@@ -95,6 +96,7 @@ tags:
 | View menu | Choose which views show in the switcher menu; drag rows to reorder — all views shown in default order by default |
 | Add completion date marker when completing a task | Appends the completion date to the end of the task line when you check it off (e.g. ✅ 2026-10-06). On by default; turn off to skip the marker while keeping start / due date tags |
 | User of this device | For a vault shared by two people: a tag name (e.g. 🌻) that is added automatically to every task created on this device (in the task editor it is pre-filled and can be removed or changed before saving), so you can tell who added what. It is an ordinary tag — filter by it in the list sidebar or give it a tag color. Stored on this device only (not in `data.json`, never synced), so set it once per device. Empty by default: nothing is added |
+| User list | Which tags stand for people (e.g. 🌻, 🥕). The *Who* row of the tag filter lists them (the user of this device is always included); tasks without any of these tags count as "Unassigned". Stored in `data.json`; enter the same list on both devices. Empty by default: the *Who* row is hidden and nothing is filtered by person |
 | Notify when tasks are due | Remind you with a notification plus a short sound when a task comes due. Off by default. ⚠️ Desktop only, no background push |
 | Remind all-day tasks | All-day tasks have no time of day; turn on to remind them at the time below. Off by default |
 | All-day reminder time | Every all-day task of the day is reminded at this time, e.g. 10:00 |

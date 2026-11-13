@@ -10,6 +10,8 @@ import {
 
 // ---------- 纯函数 ----------
 import { getWeekStart } from './tasks-logic.js';
+// 自用改版（按标签筛选）：面板读任务都经过下面的 api，筛选统一加在这里
+import { getTaskMatcher, filterTopTasks, filterChecklistGroups } from './viewFilter.js';
 
 export function startOfWeek(d) {
   const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -41,11 +43,27 @@ async function unwrap(p) {
   return r.body;
 }
 
+// 自用改版（按标签筛选）：各视图、待办侧栏、Mac 桌面小组件读任务都走下面这四个函数，
+// 所以「只显示选中的人、选中的标签的任务」统一加在这里，不用每个视图各筛一遍。
+// 筛选没在挡任何东西时 getTaskMatcher() 返回 null，下面几处就原样返回，和没有这个功能时一样。
+// 按 guid 找某一条任务（getDetail）、读子任务、收集全部标签不筛：那些是冲着具体任务去的。
 const api = {
-  async loadAll() { return (await unwrap(loadAll())).items || []; },
-  async loadChecklists() { return (await unwrap(loadChecklists())).items || []; },
-  async loadByList(listKey) { return (await unwrap(loadByList(listKey))).items || []; },
-  async loadChecklistGroups(listKey) { return await unwrap(loadChecklistGroups(listKey)); },
+  // opts.unfiltered 为 true 时不筛（到点提醒用：提醒不跟着筛选走）
+  async loadAll(opts) {
+    const items = (await unwrap(loadAll())).items || [];
+    return (opts && opts.unfiltered) ? items : filterTopTasks(items, getTaskMatcher());
+  },
+  // 清单卡片上的进度（total / done）也按筛选算，和右侧显示的任务对得上
+  async loadChecklists() {
+    const match = getTaskMatcher();
+    return (await unwrap(loadChecklists(match ? { match } : undefined))).items || [];
+  },
+  async loadByList(listKey) {
+    return filterTopTasks((await unwrap(loadByList(listKey))).items || [], getTaskMatcher());
+  },
+  async loadChecklistGroups(listKey) {
+    return filterChecklistGroups(await unwrap(loadChecklistGroups(listKey)), getTaskMatcher());
+  },
   // 自用改版：批量改标签（删除、改名、移进移出标签组）；opts.dryRun 只数会改多少条。返回 { tasks, files }
   async editTags(op, opts) { return await unwrap(editTags(op, opts)); },
   async loadByDate(dateKey) { return (await unwrap(loadByDate(dateKey))).items || []; },

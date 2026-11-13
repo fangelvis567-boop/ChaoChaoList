@@ -129,11 +129,12 @@
 </template>
 
 <script>
-import { TFile } from 'obsidian';
+import { TFile, Notice } from 'obsidian';
 import { Tasks } from '../composables/useTasks.js';
 import { splitSummary, composeSummary, sanitizeTag, isImeKey, PRIORITY_ICON, priorityToLevel, levelToPriorityEmoji, withAlpha, validHex, INBOX_KEY, weekdayLong } from '../composables/tasks-logic.js';
 import { chipInfo } from '../composables/dateDraft.js';
 import { defaultTaskTags } from '../composables/deviceUser.js';
+import { getTaskMatcher } from '../composables/viewFilter.js';
 import DateTimePanel from './DateTimePanel.vue';
 import { LinkFormModal, ConfirmModal } from '../ui/modals.js';
 import { openTaskInFile } from '../utils/openTaskInFile.js';
@@ -517,6 +518,11 @@ export default {
           : (this.createIn
               ? await Tasks.createChecklistTask(this.createIn.list, this.createIn.group, payload)
               : await Tasks.createTask(payload));
+        // 自用改版：新建的任务不在当前「按标签筛选」里（比如正筛着某个标签而它没带）时提示一句，免得以为没加上
+        if (!this.editing) {
+          const match = getTaskMatcher();
+          if (match && !match({ tags: this.form.tags })) new Notice(this.$t('app.filterHidesNew'));
+        }
         this.$emit('saved', saved);
         this.close();
       } catch (e) {

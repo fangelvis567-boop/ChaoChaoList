@@ -18,6 +18,7 @@
     <!-- 顶部：各视图控件（左）+ 视图切换（右），抽离为 TaskTopBar 组件 -->
     <task-top-bar :view="view" :range-label="rangeLabel" :todo-panel-open="todoPanelOpen"
                   :hide-done="hideDone" :cl-main-view="clMainView"
+                  :view-filter="viewFilter" :filter-users="filterUsers" @set-view-filter="onSetViewFilter"
                   @navigate="onNav" @switch-view="switchView"
                   @toggle-todo-panel="todoPanelOpen = !todoPanelOpen"
                   @toggle-hide-done="toggleHideDone" @set-cl-main-view="setClMainView"
@@ -125,6 +126,8 @@ import { buildCalendarTasks, hasSubtasks } from '../composables/subtasks.js';
 import { ConfirmModal } from '../ui/modals.js';
 import { getTaskViewPref, setTaskViewPref, getClMainViewPref, setClMainViewPref } from '../composables/viewPrefs.js';
 import { useListState } from '../composables/useListState.js';
+// 自用改版：按标签筛选（规则见 composables/viewFilter.js；真正筛任务的地方在 useTasks.js）
+import { getViewFilter, setViewFilter, currentUsers, isFilterActive } from '../composables/viewFilter.js';
 import { VIEW_MENU_ITEMS, reorderViews } from '../composables/viewMenu.js';
 import { VueModal } from '../ui/VueModal.js';
 
@@ -189,6 +192,10 @@ export default {
       dailyDisabled: false,
       // 周/月视图：隐藏已办（界面记忆，存 localStorage）
       hideDone: tv.hideDone,
+      // 按标签筛选（自用改版）：当前选了谁、选了哪些标签（存在本机）；filterUsers 是使用者名单。
+      // 所有视图共用这一份：this.tasks 读回来时已经按它筛过了（见 useTasks.js）
+      viewFilter: getViewFilter(),
+      filterUsers: currentUsers(),
       // 日程视图：已延期 / 更远 默认折叠
       agendaCollapsed: { overdue: true, far: true },
       // 日程视图：左侧日期导航（未来7天 + 更远）选中日期
@@ -454,6 +461,9 @@ export default {
     async load(silent) {
       if (!silent) this.loading = true;
       this.error = '';
+      // 按标签筛选：使用者名单、这台设备的使用者可能刚在设置里改过，读任务前先对齐一次
+      this.filterUsers = currentUsers();
+      this.viewFilter = getViewFilter();
       try {
         const [tasks, cls] = await Promise.all([Tasks.loadAll(), Tasks.loadChecklists()]);
         this.tasks = tasks;
@@ -466,7 +476,11 @@ export default {
     },
     // ---------- 首次使用引导 ----------
     // 任务池为空且未关闭过时显示
-    showOnboard() { return !this.loading && !this.tasks.length && !this.onboardDismissed; },
+    // （自用改版）正在按标签筛选时不显示：任务可能只是被筛掉了
+    showOnboard() {
+      return !this.loading && !this.tasks.length && !this.onboardDismissed
+        && !isFilterActive(this.viewFilter, this.filterUsers);
+    },
     // 打开设置并定位到本插件设置页
     openSettings() {
       try {
@@ -511,6 +525,13 @@ export default {
       }
     },
     switchView(v) { this.subPopClose(); this.view = v; if (v === 'day') this.tlDayOffset = 0; this.persistTaskView(); },
+    // 自用改版：顶栏改了「按标签筛选」→ 存到本机，再把任务重新读一遍。
+    // 各视图、清单页（它盯着清单列表的变化重读右侧）随之刷新；待办侧栏自己读清单里的无日期任务，另外通知一声
+    async onSetViewFilter(next) {
+      this.viewFilter = setViewFilter(next);
+      await this.reload();
+      this.maybeRefreshNoDate();
+    },
     // 视图菜单拖拽排序（菜单上直接拖 或 设置页列表拖）：dragKey 移动到 overKey 前/后，
     // 写回完整顺序（含隐藏项，保持其相对位置）并持久化
     async reorderMenu(dragKey, overKey) {

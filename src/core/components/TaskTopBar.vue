@@ -15,6 +15,7 @@
           <button class="tk-btn" type="button" @click="$emit('navigate', 'this')">{{ $t(nav.current) }}</button>
           <button class="tk-btn ico" type="button" @click="$emit('navigate', 'next')" :title="$t(nav.next)"><i class="la la-angle-right"></i></button>
         </div>
+        <view-filter :filter="viewFilter" :users="filterUsers" @change="$emit('set-view-filter', $event)" />
         <button class="tk-btn ico" type="button" :class="{ on: hideDone }"
                 v-tooltip="hideDone ? $t('app.showAll') : $t('app.hideDone')" @click="$emit('toggle-hide-done')">
           <i class="la" :class="hideDone ? 'la-eye-slash' : 'la-eye'"></i>
@@ -30,6 +31,7 @@
         <button class="tk-btn" type="button" @click="$emit('back-to-today')" :title="$t('app.backToToday')">
           <i class="la la-clock-o"></i><span>{{ $t('app.backToToday') }}</span>
         </button>
+        <view-filter :filter="viewFilter" :users="filterUsers" @change="$emit('set-view-filter', $event)" />
         <button class="tk-btn ico" type="button" :class="{ on: hideDone }"
                 v-tooltip="hideDone ? $t('app.showAll') : $t('app.hideDone')" @click="$emit('toggle-hide-done')">
           <i class="la" :class="hideDone ? 'la-eye-slash' : 'la-eye'"></i>
@@ -46,6 +48,7 @@
             <button class="tk-btn" type="button" :class="{ on: clMainView === 'list' }" @click="$emit('set-cl-main-view', 'list')"><i class="la la-list"></i>{{ $t('app.list') }}</button>
             <button class="tk-btn" type="button" :class="{ on: clMainView === 'cols' }" @click="$emit('set-cl-main-view', 'cols')"><i class="la la-columns"></i>{{ $t('app.cols') }}</button>
           </div>
+          <view-filter :filter="viewFilter" :users="filterUsers" @change="$emit('set-view-filter', $event)" />
           <button class="tk-btn ico" type="button" :class="{ on: hideDone }"
                   v-tooltip="hideDone ? $t('app.showAll') : $t('app.hideDone')" @click="$emit('toggle-hide-done')">
             <i class="la" :class="hideDone ? 'la-eye-slash' : 'la-eye'"></i>
@@ -59,6 +62,7 @@
       <!-- 四象限视图：视图名（左）+ 仅显示待办（右上） -->
       <template v-else-if="view === 'matrix'">
         <span class="tk-range">{{ $t('app.viewMatrix') }}</span>
+        <view-filter :filter="viewFilter" :users="filterUsers" @change="$emit('set-view-filter', $event)" />
         <button class="tk-btn ico" type="button" :class="{ on: hideDone }"
                 v-tooltip="hideDone ? $t('app.showAll') : $t('app.hideDone')" @click="$emit('toggle-hide-done')">
           <i class="la" :class="hideDone ? 'la-eye-slash' : 'la-eye'"></i>
@@ -66,6 +70,13 @@
         <button class="tk-btn ico" type="button" v-tooltip="$t('app.newTask')" @click="$emit('new-task')">
           <i class="la la-plus"></i>
         </button>
+      </template>
+
+      <!-- 列表视图（自用改版）：顶栏原来是空的，现在放一个按标签筛选的按钮，靠右 -->
+      <template v-else>
+        <div class="tk-cl-hide">
+          <view-filter :filter="viewFilter" :users="filterUsers" @change="$emit('set-view-filter', $event)" />
+        </div>
       </template>
     </div>
 
@@ -77,9 +88,15 @@
 // 顶栏：左侧各视图控件（区间文案 / 待办面板开关 / 前后导航 / 仅显示待办）+ 右侧视图切换下拉。
 // 从 TasksApp 抽离：导航等交互以事件交还父级（navigate('prev'|'this'|'next')），
 // 视图名等文案经 $t 跟随 Obsidian 界面语言。
+import ViewFilter from './ViewFilter.vue';
+
 export default {
   name: 'TaskTopBar',
+  components: { ViewFilter },
   props: {
+    // 按标签筛选（自用改版）：当前的筛选和使用者名单，由 TasksApp 保管，这里只转交给筛选按钮
+    viewFilter: { type: Object, default: () => ({ users: [], unassigned: true, tags: [] }) },
+    filterUsers: { type: Array, default: () => [] },
     // 当前视图 key：four / day / month / agenda / cl / all
     view: { type: String, required: true },
     // 区间文案（周视图日期区间 / 日视图日期 / 月份 / 日程区间），由父级按视图给入
@@ -88,7 +105,7 @@ export default {
     hideDone: { type: Boolean, default: false },
     clMainView: { type: String, default: 'cols' }
   },
-  emits: ['navigate', 'toggle-todo-panel', 'toggle-hide-done', 'new-task', 'set-cl-main-view', 'back-to-today'],
+  emits: ['navigate', 'toggle-todo-panel', 'toggle-hide-done', 'new-task', 'set-cl-main-view', 'back-to-today', 'set-view-filter'],
   computed: {
     // 周/日/月共用的导航文案（i18n key）；其余视图返回 null 走各自分支
     nav() {

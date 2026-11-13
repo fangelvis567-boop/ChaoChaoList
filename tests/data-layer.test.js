@@ -17,6 +17,12 @@ import {
   DEVICE_USER_KEY, initDeviceUser, getDeviceUserTag, setDeviceUserTag, defaultTaskTags
 } from '../src/core/composables/deviceUser.js';
 import {
+  buildUserList, defaultFilter, normalizeFilter, isFilterActive, makeMatcher,
+  toggleWho, toggleTag, clearTags, filterSummary,
+  VIEW_FILTER_KEY, initViewFilter, getViewFilter, setViewFilter
+} from '../src/core/composables/viewFilter.js';
+import { Tasks } from '../src/core/composables/useTasks.js';
+import {
   buildMatrixWidget, buildWidgetData, widgetTitle, buildMonthWidget, cssColorToHex
 } from '../src/core/composables/widgetSnapshot.js';
 import { ReminderService } from '../src/core/services/reminder.js';
@@ -914,6 +920,115 @@ test('带使用者标签新建任务：写进笔记的那一行带 #🌻，读�
   } finally {
     setTagColors({});
     initDeviceUser(null);
+  }
+});
+
+// ============================================================
+// 十二、按标签筛选：所有视图只显示选中的人、选中的标签的任务（自用改版）
+// ============================================================
+
+test('使用者名单和默认筛选：名单 = 设置里填的 + 这台设备的使用者；默认只看这台设备的使用者和「没指定」', () => {
+  eq(buildUserList(['🌻', '#🥕', '🌻', 'a!b', ''], '🥕'), ['🌻', '🥕'], '去重、去掉 #、去掉不能当标签用的');
+  eq(buildUserList([], '🌻'), ['🌻'], '名单没填：这台设备的使用者自己算一个');
+  eq(buildUserList(['🥕'], '🌻'), ['🥕', '🌻'], '这台设备的使用者不在名单里：补在最后');
+  eq(buildUserList(null, ''), [], '都没填：没有「谁的」这一部分');
+  eq(defaultFilter(['🌻', '🥕'], '🌻'), { users: ['🌻'], unassigned: true, tags: [] }, '默认');
+  eq(defaultFilter(['🌻', '🥕'], ''), { users: ['🌻', '🥕'], unassigned: true, tags: [] }, '没设这台设备的使用者：名单里的人全选');
+});
+
+test('整理存下来的筛选：没存过用默认；不在名单上的人、重复的标签去掉；「谁的」一个不剩就退回默认', () => {
+  const U = ['🌻', '🥕'];
+  eq(normalizeFilter(null, U, '🌻'), { users: ['🌻'], unassigned: true, tags: [] }, '没存过');
+  eq(normalizeFilter({ users: ['🥕', '🌻', '👻'], unassigned: false, tags: ['家务', '🌻', '家务', ''] }, U, '🌻'),
+    { users: ['🌻', '🥕'], unassigned: false, tags: ['家务'] }, '人按名单顺序排，去掉不在名单上的；标签去重、去掉其实是使用者的');
+  eq(normalizeFilter({ users: ['👻'], unassigned: false, tags: [] }, U, '🥕'), { users: ['🥕'], unassigned: true, tags: [] },
+    '选中的人已经不在名单上、又没选「没指定」：退回默认');
+  eq(normalizeFilter({ users: [], unassigned: true, tags: [] }, U, '🌻'), { users: [], unassigned: true, tags: [] }, '只看「没指定」是可以的');
+  eq(normalizeFilter({ users: ['🌻'], tags: ['x'] }, [], ''), { users: [], unassigned: true, tags: ['x'] }, '名单是空的：只剩标签');
+});
+
+test('筛选规则：是选中的人的（没带使用者标签的算「没指定」），并且带任意一个选中的标签', () => {
+  const U = ['🌻', '🥕'];
+  const T = (...tags) => ({ tags });
+  // 七条任务依次是：我的 / 她的 / 两人的 / 什么标签都没有 / 只带家务 / 我的家务 / 她的科研论文
+  const pool = [T('🌻'), T('🥕'), T('🌻', '🥕'), T(), T('家务'), T('🌻', '家务'), T('🥕', '科研/论文')];
+  const show = (f, users = U) => { const m = makeMatcher(f, users); return pool.map((t) => (m ? m(t) : true)); };
+  eq(show({ users: ['🌻'], unassigned: true, tags: [] }), [true, false, true, true, true, true, false], '默认：我的 + 没指定的');
+  eq(show({ users: ['🌻'], unassigned: false, tags: [] }), [true, false, true, false, false, true, false], '点掉「没指定」：只剩带我标签的');
+  eq(show({ users: ['🥕'], unassigned: false, tags: [] }), [false, true, true, false, false, false, true], '只看她的（两人都带的也算）');
+  eq(show({ users: [], unassigned: true, tags: [] }), [false, false, false, true, true, false, false], '只看没指定的');
+  eq(show({ users: ['🌻', '🥕'], unassigned: true, tags: ['家务', '科研'] }), [false, false, false, false, true, true, true],
+    '不限人，带家务或科研的（选父标签「科研」，子标签「科研/论文」也算）');
+  eq(show({ users: ['🌻'], unassigned: true, tags: ['家务'] }), [false, false, false, false, true, true, false], '我的和没指定的里面，带家务的');
+  eq(makeMatcher({ users: ['🌻', '🥕'], unassigned: true, tags: [] }, U), null, '人全选、没选标签：什么都不挡，不用筛');
+  eq(show({ users: [], unassigned: true, tags: ['家务'] }, []), [false, false, false, false, true, true, false], '没有使用者名单：只按标签');
+  eq(makeMatcher({ users: [], unassigned: true, tags: [] }, []), null, '没有名单也没选标签：不用筛');
+});
+
+test('筛选面板里的点击：「谁的」最后一个点不掉；标签可多选；按钮上显示选了什么', () => {
+  const U = ['🌻', '🥕'];
+  const f = { users: ['🌻'], unassigned: true, tags: [] };
+  eq(toggleWho(f, '🥕'), { users: ['🌻', '🥕'], unassigned: true, tags: [] }, '加上她');
+  eq(toggleWho(f, null), { users: ['🌻'], unassigned: false, tags: [] }, '点掉「没指定」');
+  eq(toggleWho({ users: ['🌻'], unassigned: false, tags: [] }, '🌻'), null, '只剩一个人时点不掉');
+  eq(toggleWho({ users: [], unassigned: true, tags: [] }, null), null, '只剩「没指定」时也点不掉');
+  eq(f, { users: ['🌻'], unassigned: true, tags: [] }, '点击不改原来那份筛选');
+  eq(toggleTag(toggleTag(f, '家务'), '科研').tags, ['家务', '科研'], '标签可以选多个');
+  eq(toggleTag({ users: [], unassigned: true, tags: ['家务'] }, '家务').tags, [], '再点一下取消');
+  eq(clearTags({ users: ['🌻'], unassigned: false, tags: ['a', 'b'] }), { users: ['🌻'], unassigned: false, tags: [] }, '清除标签不动「谁的」');
+  eq(filterSummary(f, U, '没指定'), ['🌻', '没指定'], '按钮文字：选中的人 + 没指定');
+  eq(filterSummary({ users: U, unassigned: true, tags: ['家务'] }, U, '没指定'), ['#家务'], '人全选时只列标签');
+  eq([filterSummary({ users: U, unassigned: true, tags: [] }, U, '没指定'), isFilterActive({ users: U, unassigned: true, tags: [] }, U)],
+    [[], false], '什么都不挡：按钮不带字、不点亮');
+  eq(isFilterActive(f, ['🌻']), false, '名单里只有自己、又选着「没指定」：其实没在挡');
+});
+
+test('按标签筛选接到取数那一层：全部任务、某个清单、清单分组、清单进度都按筛选来；子任务跟着主任务；提醒照旧读全部', async () => {
+  const J12 = '日记/2026-11-12.md';
+  const v = vaultWith({
+    'Inbox.md': HEAD_INBOX + '- [ ] 我的 #🌻\n\t- [ ] 我的子任务\n- [ ] 她的 #🥕\n\t- [ ] 她的子任务 #🌻\n- [ ] 没标记的\n',
+    [J12]: HEAD_DAILY + '- [ ] 她的日记任务 #🥕\n- [x] 我做完的 #🌻 #家务\n',
+    [LIST]: HEAD_LIST + '- [ ] 清单里我的 #🌻\n\t- [x] 清单子任务\n### 采购\n- [ ] 清单里她的 #🥕 📅 2026-11-13\n\t- [ ] 她的清单子任务\n- [x] 清单里没标记的\n'
+  }, { userTags: ['🌻', '🥕'], checklistShowJournal: false });
+  const app = Object.assign(v.plugin.app, fakeApp());
+  initDeviceUser(app);
+  initViewFilter(v.plugin);
+  try {
+    setDeviceUserTag('🌻');
+    const names = (items) => items.map((t) => splitSummary(t.summary).title).sort();
+    const groupNames = (g) => g.groups.map((x) => [x.title, x.tasks.map((t) => splitSummary(t.summary).title)]);
+    const progress = async () => (await Tasks.loadChecklists()).map((c) => [c.name, c.done, c.total]);
+
+    // —— 没动过筛选：默认只看我的和没指定的 ——
+    eq([getViewFilter(), app.store.has(VIEW_FILTER_KEY)], [{ users: ['🌻'], unassigned: true, tags: [] }, false], '默认筛选现算，不往本机存东西');
+    const mine = await Tasks.loadAll();
+    eq(names(mine), ['我做完的', '我的', '没标记的'], '全部任务：她的不显示（哪怕她的子任务带着我的标签）');
+    eq(mine.find((t) => t.summary.indexOf('我的') === 0).subtasks.map((s) => s.summary), ['我的子任务'], '主任务显示，子任务跟着显示');
+    eq(names(await Tasks.loadAll({ unfiltered: true })), ['她的', '她的日记任务', '我做完的', '我的', '没标记的', '清单里她的'], '提醒用的读法：不筛');
+    eq(names(await Tasks.loadByList(LIST_KEY)), ['清单里我的', '清单里没标记的'], '列表视图里选中某个清单');
+    const g1 = await Tasks.loadChecklistGroups(LIST_KEY);
+    eq([groupNames(g1), g1.done, g1.total], [[['', ['清单里我的', '清单子任务']], ['采购', ['清单里没标记的']]], 2, 3],
+      '清单页：她的主任务连同下面的子任务一起去掉，总数和完成数跟着重算');
+    eq(await progress(), [['项目', 2, 3]], '清单卡片上的进度和右侧对得上');
+
+    // —— 只看她的 ——
+    eq(setViewFilter({ users: ['🥕'], unassigned: false, tags: [] }), { users: ['🥕'], unassigned: false, tags: [] }, '改筛选');
+    eq(app.store.get(VIEW_FILTER_KEY), { users: ['🥕'], unassigned: false, tags: [] }, '存在本机');
+    eq(names(await Tasks.loadAll()), ['她的', '她的日记任务', '清单里她的'], '全部任务：只剩她的');
+    eq([groupNames(await Tasks.loadChecklistGroups(LIST_KEY)), await progress()],
+      [[['', []], ['采购', ['清单里她的', '她的清单子任务']]], [['项目', 0, 2]]], '清单页和进度');
+
+    // —— 我的 + 没指定，再加一个标签 ——
+    setViewFilter({ users: ['🌻'], unassigned: true, tags: ['家务'] });
+    eq(names(await Tasks.loadAll()), ['我做完的'], '只剩带「家务」的');
+
+    // —— 不限人、不限标签：和没有筛选一样 ——
+    setViewFilter({ users: ['🌻', '🥕'], unassigned: true, tags: [] });
+    eq([(await Tasks.loadAll()).length, await progress()], [6, [['项目', 2, 5]]], '全部显示');
+    eq(body(await loadChecklists()).items.map((c) => [c.done, c.total]), [[2, 5]], '数据层不带筛选时进度照旧');
+  } finally {
+    initDeviceUser(null);
+    initViewFilter(null);
   }
 });
 
