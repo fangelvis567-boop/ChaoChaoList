@@ -101,7 +101,8 @@
 }
 .task-app .cel-task .tk-subprog i, .task-app .cel-bar .tk-subprog i, .task-app .tk-tl-week .tk-subprog i { font-size: 10px; }
 /* 日视图：全天区的泳道行高随内容增高（全天任务里会列出子任务） */
-.task-app .tk-tl:not(.tk-tl-week) .tk-tl-allday { grid-template-rows: repeat(var(--tl-lanes, 1), minmax(30px, auto)); }
+/* 自用改版：最矮高度跟着全天条一起从 30px 改成 22px（见 TaskTimeline.vue 的 .tk-tl-allday） */
+.task-app .tk-tl:not(.tk-tl-week) .tk-tl-allday { grid-template-rows: repeat(var(--tl-lanes, 1), minmax(22px, auto)); }
 .task-app .tk-tl-aditem.has-sublist { flex-wrap: wrap; padding-bottom: 4px; }
 .task-app .tk-tl-aditem.has-sublist > .tk-subl { flex: 1 0 100%; }
 .task-app .tk-tl-block .tk-subl { margin-left: 6px; }

@@ -883,7 +883,8 @@ export function doneDay(t) {
 
 // ---------- 任务块配色（多套方案，可在设置中切换） ----------
 // 每套均为「浅底 + 同色深字/强调色」，按标题哈希取色（浅底深字）。
-// default = 插件默认配色；morandi = 莫兰迪低饱和灰调；jelly = 卡通果冻高饱和糖果色。
+// default = 插件默认配色；morandi = 莫兰迪低饱和灰调；jelly = 卡通果冻高饱和糖果色；
+// liuli = 琉璃，参考 Mac 日历的清透色（自用改版）。
 
 // 插件默认配色（default）
 export const TIMELINE_COLORS = [
@@ -969,10 +970,26 @@ export const WINTER_COLORS = [
   { bg: 'rgba(150, 185, 205, .28)', fg: '#346066' }  // 松雪青（少量）
 ];
 
+// 琉璃（自用改版）：参考 Mac 日历的清透配色——红、橙、黄、绿、青、蓝、紫、粉八色。
+// 红、黄、蓝、绿和四象限视图的四个颜色完全一样（见 matrixQuads.js），两边是同一个色系。
+// 画法也学 Mac 日历：底色是本色很浅的一层（bg），任务前面的小圆圈用本色（fg），文字保持正常的深色。
+// 深浅两种主题共用同一组颜色（深色主题下这层浅色叠在深底上，自然变成暗一点的色块）。
+export const LIULI_COLORS = [
+  { bg: 'rgba(224, 88, 79, .16)', fg: '#e0584f' },   // 红（同四象限「重要且紧急」）
+  { bg: 'rgba(232, 137, 74, .16)', fg: '#e8894a' },  // 橙
+  { bg: 'rgba(224, 169, 59, .16)', fg: '#e0a93b' },  // 黄（同四象限「重要不紧急」）
+  { bg: 'rgba(76, 175, 125, .16)', fg: '#4caf7d' },  // 绿（同四象限「不重要不紧急」）
+  { bg: 'rgba(58, 169, 181, .16)', fg: '#3aa9b5' },  // 青
+  { bg: 'rgba(74, 144, 210, .16)', fg: '#4a90d2' },  // 蓝（同四象限「紧急不重要」）
+  { bg: 'rgba(138, 120, 216, .16)', fg: '#8a78d8' }, // 紫
+  { bg: 'rgba(221, 111, 156, .16)', fg: '#dd6f9c' }  // 粉
+];
+
 // 配色方案注册表（设置项 colorScheme 的取值），基础方案如下。
 
 export const COLOR_SCHEMES = {
   default: TIMELINE_COLORS,
+  liuli: LIULI_COLORS,
   morandi: MORANDI_COLORS,
   jelly: JELLY_COLORS,
   spring: SPRING_COLORS,
@@ -981,10 +998,14 @@ export const COLOR_SCHEMES = {
   winter: WINTER_COLORS,
 };
 
-// 每个方案的渲染标志（由上层注入；基础方案无此表，取默认行为）。
+// 每个方案的渲染标志（多数由上层注入；基础方案里只有琉璃带一项，其余取默认行为）。
 //   darkSwitch：深色主题下切换到该方案的 bgDark/fgDark（否则维持浅底深字）。
 //   useFg：任务块文字强制用各自 fg（而非 var(--ink)）；深底色卡（标记 dark）天然也用 fg。
-export const SCHEME_FLAGS = {};
+//   tagAlpha：设了「标签颜色」的任务，浅底用多浓（默认 .28）。琉璃整体更淡，标签色也跟着淡到 .16，
+//             不然设了标签色的任务会比其他任务浓一截。
+export const SCHEME_FLAGS = {
+  liuli: { tagAlpha: 0.16 }
+};
 
 // 设置页「配色方案」下拉的额外项（由上层模块注入，可选）；免费版恒为空。
 export const EXTRA_SCHEME_OPTIONS = [];
@@ -1075,12 +1096,13 @@ export function withAlpha(color, a) {
 // 时间轴任务块配色：标签颜色优先（issue #8），未命中配置的标签按标题哈希取色（浅底深字）
 export function colorOf(t, scheme) {
   // 标签优先：任务标签中第一个命中 tagColors 配置的决定整块背景色（叠加默认透明度，
-  // 与色卡浅底观感一致）；fg = 实色，供日程卡片左侧色条（--ag-bar）使用。
+  // 与色卡浅底观感一致；方案声明了 tagAlpha 就用它）；fg = 实色，供任务前面的小圆圈（--tk-dot）使用。
   // 文字色不受影响——itemColor 仅在方案声明 useFg / 色卡标记 dark 时才把 fg 用作文字色
   const tags = t && Array.isArray(t.tags) ? t.tags : [];
+  const tagAlpha = (SCHEME_FLAGS[scheme || activeColorScheme] || {}).tagAlpha || 0.28;
   for (const g of tags) {
     const c = tagColors[g];
-    if (c) return { bg: withAlpha(c, 0.28), fg: c };
+    if (c) return { bg: withAlpha(c, tagAlpha), fg: c };
   }
   const arr = COLOR_SCHEMES[scheme] || COLOR_SCHEMES[activeColorScheme];
   const s = String((t && t.summary) || '');
@@ -1101,7 +1123,9 @@ export function itemColor(t, scheme) {
   // 是否用块色文字：由 SCHEME_FLAGS.useFg 声明（Pro 注入方案），或该色卡自身标记 dark（深底色卡）
   const flags = SCHEME_FLAGS[active] || {};
   const useFg = flags.useFg || !!(c && c.dark);
-  return { background: c.bg, color: useFg ? (c.fg || 'var(--ink)') : 'var(--ink)' };
+  // --tk-dot（自用改版）：任务前面那个小圆圈的颜色，用这个任务自己的本色（学 Mac 日历的彩色圆点）；
+  // 样式见 tasks-shared.css。已完成、已取消的圆圈仍是绿勾、红减号，不受它影响。
+  return { background: c.bg, color: useFg ? (c.fg || 'var(--ink)') : 'var(--ink)', '--tk-dot': c.fg || 'var(--ink-soft)' };
 }
 
 // 农历日文案：中文用库自带词表（初一、十五…）；

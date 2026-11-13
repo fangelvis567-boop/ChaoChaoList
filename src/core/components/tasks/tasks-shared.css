@@ -11,13 +11,56 @@
    只在右侧竖向菜单时生效（:has 判断面板上有没有 tk-pro-right）；左侧竖向菜单、底部横向菜单不受影响。 */
 .view-content:has(> .dada-todo-root > .task-app.tk-pro-right) { padding-right: 0; }
 
+/* ===== 日、周、月、日程视图的玻璃质感（自用改版，对齐四象限视图） =====
+   四个视图共用下面这些令牌：
+     · 日历面板（周、日的时间轴，月的日期格）：近白的面板 + 一圈发丝细边 + 很小的阴影，圆角 16px；
+       吸顶的日期行用磨砂玻璃（--tk-frost），内容滚到它下面时透出模糊的样子；
+     · 侧栏玻璃（待办池、日程左边的日期导航）：和竖向菜单同款的磨砂玻璃，参数照抄 ViewPill.vue 的 .tk-pro-rail；
+     · 发丝线：格线、分隔线用很淡的墨色（--tk-hair），时间轴的小时线更淡（--tk-hair-soft），不再用 Obsidian 的边框色。
+   深色主题在下面单独调：高光压暗、阴影加重。 */
+.task-app {
+  --tk-hair: color-mix(in srgb, var(--ink) 9%, transparent);
+  --tk-hair-soft: color-mix(in srgb, var(--ink) 5.5%, transparent);
+  --tk-card-bg: color-mix(in srgb, var(--panel) 90%, transparent);
+  --tk-card-line: color-mix(in srgb, var(--ink) 10%, transparent);
+  --tk-card-shadow: 0 3px 10px rgba(0, 0, 0, .05), 0 1px 2px rgba(0, 0, 0, .04);
+  --tk-frost: color-mix(in srgb, var(--panel) 76%, transparent);
+  --tk-side-bg: color-mix(in srgb, var(--panel-2) 55%, transparent);
+  --tk-side-sheen: rgba(255, 255, 255, .34);
+  --tk-side-rim: rgba(255, 255, 255, .75);
+  --tk-side-shadow: 0 3px 10px rgba(0, 0, 0, .09), 0 1px 2px rgba(0, 0, 0, .06);
+  --tk-side-hover: color-mix(in srgb, var(--ink) 7%, transparent);
+  --tk-side-on: color-mix(in srgb, var(--gold) 15%, transparent);
+}
+.theme-dark .task-app {
+  --tk-card-shadow: 0 3px 10px rgba(0, 0, 0, .40), 0 1px 2px rgba(0, 0, 0, .30);
+  --tk-side-bg: color-mix(in srgb, var(--panel-2) 62%, transparent);
+  --tk-side-sheen: rgba(255, 255, 255, .07);
+  --tk-side-rim: rgba(255, 255, 255, .18);
+  --tk-side-shadow: 0 3px 10px rgba(0, 0, 0, .40), 0 1px 2px rgba(0, 0, 0, .30);
+  --tk-side-hover: rgba(255, 255, 255, .08);
+}
+
+/* ===== 任务前面的小圆圈用任务自己的颜色（自用改版，学 Mac 日历的彩色圆点） =====
+   日、周、月视图的任务块：颜色由 itemColor 以 --tk-dot 传进来（日程视图的圆圈在 TaskAgendaView.vue 里单独写）。
+   只管还没做完的任务；已完成（绿勾）、已取消（红减号）带 .done，不受影响。鼠标停上去时稍微压暗一点，提示可以点。 */
+.task-app .tk-tl-aditem .tk-check:not(.done),
+.task-app .tk-tl-bt .tk-check:not(.done),
+.task-app .cel-task .tk-check:not(.done),
+.task-app .cel-bar .tk-check:not(.done) { color: var(--tk-dot, var(--ink-soft)); transition: color .15s ease, filter .15s ease; }
+.task-app .tk-tl-aditem .tk-check:not(.done):hover,
+.task-app .tk-tl-bt .tk-check:not(.done):hover,
+.task-app .cel-task .tk-check:not(.done):hover,
+.task-app .cel-bar .tk-check:not(.done):hover { filter: brightness(.8); }
+
 /* ===== 统一「今日」徽标（日/周/月/日程视图共用同一外观） =====
-   主题强调色胶囊，跟随 Obsidian 主题（var(--gold)）。各视图在模板加 .tk-today-badge 即可，
-   组件内仅保留各自特有属性（如月视图 .cel-today 的 align-self）。 */
+   各视图在模板加 .tk-today-badge 即可，组件内仅保留各自特有属性（如月视图 .cel-today 的 align-self）。
+   自用改版：改成红色（今天统一用红色，见 tokens.css 的 --tk-today）；周、月视图改为把日期放进红色圆点，
+   这个徽标在那两处藏起来了，现在只有日程视图还显示。 */
 .task-app .tk-today-badge {
   flex: none;
   font-size: 10px; font-weight: 700;
-  color: var(--text-on-accent); background: var(--gold);
+  color: #fff; background: var(--tk-today, var(--gold));
   padding: 1px 7px; border-radius: 999px;
 }
 
@@ -186,8 +229,13 @@
 .task-app .tk-side {
   flex: none; width: 248px; max-height: 100%; margin-left: 14px; align-self: stretch;
   display: flex; flex-direction: column;
-  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-  box-shadow: var(--shadow); padding: 12px 12px 8px;
+  /* 自用改版：和竖向菜单同款的磨砂玻璃（原来是白底 + 边框）；描边、上沿高光都画在 box-shadow 里 */
+  background: linear-gradient(180deg, var(--tk-side-sheen), transparent 38%), var(--tk-side-bg);
+  border: none; border-radius: 16px;
+  box-shadow: var(--tk-side-shadow), inset 0 0 0 1px var(--tk-card-line), inset 0 1px 0 var(--tk-side-rim);
+  -webkit-backdrop-filter: blur(18px) saturate(1.8);
+  backdrop-filter: blur(18px) saturate(1.8);
+  padding: 12px 12px 8px;
 }
 /* 展开 / 收起过渡（宽度与高度同时收敛，避免布局突兀） */
 .task-app .tk-side-enter-active, .task-app .tk-side-leave-active {
@@ -216,7 +264,7 @@
 .task-app .tk-side.side-anim .tk-side-item:nth-child(5) { animation-delay: .16s; }
 .task-app .tk-side.side-anim .tk-side-item:nth-child(n+6) { animation-delay: .19s; }
 /* 拖拽悬停待办池（放置即清除日期）时的高亮 */
-.task-app .tk-side.drop-active { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-bg); }
+.task-app .tk-side.drop-active { box-shadow: var(--tk-side-shadow), inset 0 0 0 2px var(--gold); }
 .task-app .tk-side-h {
   flex: none; display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
   font-size: 15px; font-weight: 700; color: var(--ink);
@@ -225,11 +273,12 @@
 .task-app .tk-side-close {
   margin-left: auto; flex: none;
   width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--line); background: var(--panel); color: var(--ink-soft);
+  /* 自用改版：玻璃上的按钮不要白底，只留一圈细边 */
+  border: 1px solid var(--tk-card-line); background: transparent; color: var(--ink-soft);
   font-size: 14px; border-radius: 8px; cursor: pointer;
   transition: background .15s ease, color .15s ease, border-color .15s ease;
 }
-.task-app .tk-side-close:hover { background: var(--gold-bg); color: var(--ink); border-color: var(--gold-soft); }
+.task-app .tk-side-close:hover { background: var(--tk-side-hover); color: var(--ink); border-color: var(--tk-card-line); }
 /* 待办池标题前的图标 */
 .task-app .tk-side-h .tk-pool-ic { color: var(--gold); font-size: 16px; flex: none; }
 /* 待办池标题下的数据来源小字说明 */

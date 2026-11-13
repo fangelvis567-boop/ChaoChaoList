@@ -11,7 +11,7 @@ import {
   parseTasks, serializeBlock, collectLineNos, splitDescription, descPreview,
   timeText, spansDays, moveToDay, shiftSpanToDay, tagMapper, rewriteTagsInText, cleanTagName,
   levelToPriorityEmoji, setTagColors, lunarTagText, holidayOf,
-  withTag, splitSummary, composeSummary, colorOf
+  withTag, splitSummary, composeSummary, colorOf, itemColor, setColorScheme, COLOR_SCHEMES
 } from '../src/core/composables/tasks-logic.js';
 import {
   DEVICE_USER_KEY, initDeviceUser, getDeviceUserTag, setDeviceUserTag, defaultTaskTags
@@ -1029,6 +1029,33 @@ test('按标签筛选接到取数那一层：全部任务、某个清单、清�
   } finally {
     initDeviceUser(null);
     initViewFilter(null);
+  }
+});
+
+// ---------- 十三、琉璃配色（自用改版） ----------
+
+test('琉璃配色：八种颜色、红黄蓝绿和四象限同色，小圆圈取本色，标签色跟着变淡', () => {
+  const arr = COLOR_SCHEMES.liuli;
+  eq(arr.length, 8, '八种颜色');
+  eq(arr.every((c) => /^rgba\(\d+, \d+, \d+, \.16\)$/.test(c.bg) && /^#[0-9a-f]{6}$/.test(c.fg)), true, '每种都是很浅的底色 + 本色');
+  const fgs = arr.map((c) => c.fg);
+  eq(['#e0584f', '#e0a93b', '#4a90d2', '#4caf7d'].every((x) => fgs.includes(x)), true, '红黄蓝绿和四象限的颜色一样');
+  try {
+    setTagColors({});
+    setColorScheme('liuli');
+    const t = { summary: '写周报', tags: [] };
+    const c = colorOf(t);
+    eq(arr.includes(c), true, '没设标签色时，按标题从琉璃里取色');
+    eq(itemColor(t), { background: c.bg, color: 'var(--ink)', '--tk-dot': c.fg }, '浅底色、正常深色文字、小圆圈用本色');
+    setTagColors({ 论文: '#2aa198' });
+    eq(colorOf({ summary: 'x', tags: ['论文'] }), { bg: 'rgba(42,161,152,0.16)', fg: '#2aa198' }, '设了标签色的任务，底色跟着琉璃淡到 .16');
+    setColorScheme('morandi');
+    eq(colorOf({ summary: 'x', tags: ['论文'] }).bg, 'rgba(42,161,152,0.28)', '其他方案的标签色仍是原来的 .28');
+    const u = { summary: '买菜', tags: [] };
+    eq(itemColor(u)['--tk-dot'], colorOf(u).fg, '其他方案的小圆圈同样取本色');
+  } finally {
+    setTagColors({});
+    setColorScheme('default');
   }
 });
 

@@ -691,7 +691,10 @@ export default {
       }).open();
     },
     // 日程视图：左侧时间点 / 右侧卡片，沿用时间轴配色；文字色走 itemColor（皮卡丘近黑/焦棕深底色卡走亮字、其余亮底深字，紫罗兰走亮色字）
-    agendaCard(t) { const c = this.colorOf(t); return { background: c.bg, color: itemColor(t).color, '--ag-bar': c.fg }; },
+    // 自用改版：卡片左边不再画色条（原来的 --ag-bar），颜色只靠浅底色和时间轴上的小圆点
+    agendaCard(t) { const c = itemColor(t); return { background: c.background, color: c.color }; },
+    // 日程视图时间轴上那个小圆点的颜色（自用改版）：用任务自己的本色，挂在整行上（圆点在卡片外面）
+    agendaDot(t) { return { '--tk-dot': this.colorOf(t).fg }; },
     // 日程视图：已延期 / 更远 分组折叠切换
     toggleAgendaGroup(kind) { this.agendaCollapsed[kind] = !this.agendaCollapsed[kind]; },
     // 日程视图：回到今天——将「今日」分组滚动到可视区域顶部
@@ -1185,28 +1188,39 @@ export default {
 /* 左侧日期导航：吸顶、列表式。
    flex: 2 1 0 + max-width:300 + min-width:150 ⇒ 与右侧议程按 2:5 占比共享空间，
    面板变窄时本列按比例收窄（而非钉死 300），窄到 220px 触发 @container 隐藏年份/星期 */
+/* 自用改版：和竖向菜单同款的磨砂玻璃面板（原来是白底 + 边框）；描边、上沿高光画在 box-shadow 里，令牌见 tasks-shared.css */
 .tk-ag-nav { flex: 2 1 0; max-width: 300px; min-width: 150px; container-type: inline-size; position: sticky; top: 8px; align-self: flex-start;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 10px; }
-.tk-ag-nav-hd { margin-bottom: 10px; padding: 0 2px; }
+  background: linear-gradient(180deg, var(--tk-side-sheen), transparent 38%), var(--tk-side-bg);
+  border: none; border-radius: 16px;
+  box-shadow: var(--tk-side-shadow), inset 0 0 0 1px var(--tk-card-line), inset 0 1px 0 var(--tk-side-rim);
+  -webkit-backdrop-filter: blur(18px) saturate(1.8);
+  backdrop-filter: blur(18px) saturate(1.8);
+  padding: 12px 8px; }
+.tk-ag-nav-hd { margin-bottom: 8px; padding: 0 4px; }
 .tk-ag-nav-m { font-size: 14px; font-weight: 800; color: var(--ink); }
-.tk-ag-nav-list { display: flex; flex-direction: column; gap: 4px; }
-/* 每一项：日期（月日）+ 年月/周几 + 任务数（有任务）/ 箭头（无任务） */
+.tk-ag-nav-list { display: flex; flex-direction: column; gap: 2px; }
+/* 每一项：日期（月日）+ 年月/周几 + 任务数（有任务）/ 箭头（无任务）。
+   自用改版：上下留白从 13px 收到 9px，和竖向菜单的一项差不多高 */
 .tk-ag-nav-item { display: flex; align-items: center; gap: 8px; width: 100%;
-  border: 0; box-shadow: none; background: transparent; border-radius: 9px; cursor: pointer; padding: 13px 12px;
+  border: 0; box-shadow: none; background: transparent; border-radius: 10px; cursor: pointer; padding: 9px 12px;
   color: var(--ink); text-align: left; transition: background .15s ease, color .15s ease; }
-.tk-ag-nav-item:hover { background: var(--hover, rgba(127,127,127,.1)); }
+.tk-ag-nav-item:hover { background: var(--tk-side-hover); }
 .tk-ag-nav-txt { flex: 1 1 auto; font-size: 14px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tk-ag-nav-item.today .tk-ag-nav-txt { color: var(--gold); }
+/* 今天用红色（自用改版：今天统一用红色，见 tokens.css 的 --tk-today） */
+.tk-ag-nav-item.today .tk-ag-nav-txt { color: var(--tk-today, var(--gold)); }
 .tk-ag-nav-item.far .tk-ag-nav-txt { font-size: 15px; font-weight: 800; }
 /* 任务数：柔和浅灰底，避免扎眼 */
 .tk-ag-nav-c { flex: none; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
   background: var(--background-modifier-hover, rgba(127,127,127,.14)); color: var(--ink-soft);
   font-size: 11px; font-weight: 700; line-height: 20px; text-align: center; font-variant-numeric: tabular-nums; }
 .tk-ag-nav-go { flex: none; font-size: 12px; color: var(--ink-soft); }
-.tk-ag-nav-item.active { background: var(--gold); }
-.tk-ag-nav-item.active .tk-ag-nav-txt { color: var(--text-on-accent); }
-.tk-ag-nav-item.active .tk-ag-nav-c { background: var(--text-on-accent); color: var(--gold); }
-.tk-ag-nav-item.active .tk-ag-nav-go { color: var(--text-on-accent); }
+/* 选中的那一天（自用改版）：由实心主题色改成淡淡的一层主题色玻璃，字用主题色（和竖向菜单的当前项一样）；
+   选中的是今天时，字仍是红色 */
+.tk-ag-nav-item.active { background: var(--tk-side-on); }
+.tk-ag-nav-item.active .tk-ag-nav-txt { color: var(--gold); }
+.tk-ag-nav-item.active.today .tk-ag-nav-txt { color: var(--tk-today, var(--gold)); }
+.tk-ag-nav-item.active .tk-ag-nav-c { background: color-mix(in srgb, var(--gold) 16%, transparent); color: var(--gold); }
+.tk-ag-nav-item.active .tk-ag-nav-go { color: var(--gold); }
 /* 让议程在布局内自然铺满（取消组件内自身居中），并与左侧导航按 5:2 占比共享空间、
    随面板一起收窄（配合 .tk-agendaview 的 @container 在自身变窄时把日期移到列表上方） */
 .tk-agenda-layout :deep(.tk-agendaview) { margin: 0; max-width: none; flex: 5 1 0; }

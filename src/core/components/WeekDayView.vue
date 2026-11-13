@@ -506,5 +506,6 @@ export default {
 <style scoped>
 /* 周/日视图容器（自 TasksApp.vue 迁入）：时间轴 + 待办侧栏 并排 */
 .tk-tlview { flex: 1 1 auto; min-height: 0; overflow: hidden; }
-.tk-tl-wrap { display: flex; align-items: flex-start; height: 100%; overflow: hidden; }
+/* 自用改版：时间轴和待办池现在都是带阴影的玻璃面板，左右和底边各留一点空，阴影不被 overflow 裁掉 */
+.tk-tl-wrap { display: flex; align-items: flex-start; height: 100%; overflow: hidden; box-sizing: border-box; padding: 0 4px 10px; }
 </style>

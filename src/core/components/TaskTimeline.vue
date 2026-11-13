@@ -520,16 +520,28 @@ export default {
 </script>
 
 <style scoped>
-.tk-tl { flex: 1 1 auto; padding-bottom: 8px; min-height: 0; overflow: auto; align-self: stretch; container-type: inline-size; position: relative; }
-/* 表头：日期行（吸顶） */
+.tk-tl {
+  flex: 1 1 auto; padding-bottom: 8px; min-height: 0; overflow: auto; align-self: stretch; container-type: inline-size; container-name: tk-tl; position: relative;
+  /* 自用改版：时间轴放进一块圆角玻璃面板（对齐四象限视图）：近白的底、一圈发丝细边、很小的阴影。
+     细边用 border 而不是 inset 阴影——这里是滚动容器，inset 阴影会被吸顶的日期行盖住。令牌见 tasks-shared.css。 */
+  border: 1px solid var(--tk-card-line); border-radius: 16px;
+  background: var(--tk-card-bg); box-shadow: var(--tk-card-shadow);
+}
+/* 表头：日期行（吸顶）。
+   自用改版：做成磨砂玻璃，时间轴滚到它下面时透出模糊的内容；下沿一条发丝线。
+   层级抬到 8：比现在时间线、拖动柄（6）高，滚动时它们从日期行下面经过，而不是压在上面。 */
 .tk-tl-top {
   display: grid; grid-template-columns: 54px repeat(var(--tl-cols, 7), minmax(0, 1fr));
-  position: sticky; top: 0; z-index: 3;
-  background: var(--background-primary);
+  position: sticky; top: 0; z-index: 8;
+  background: var(--tk-frost);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  backdrop-filter: blur(16px) saturate(1.6);
+  box-shadow: 0 1px 0 var(--tk-hair);
 }
+/* 自用改版：上下留白从 6px 收到 4px、两行之间从 2px 收到 1px，日期行矮一点 */
 .tk-tl-dayhead {
-  display: flex; flex-direction: column; align-items: stretch; gap: 2px; min-width: 0;
-  padding: 6px 8px; border-left: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: stretch; gap: 1px; min-width: 0;
+  padding: 4px 8px; border-left: 1px solid var(--tk-hair);
 }
 /* 第一行：周几 + 日期 + 今日/相对徽标 + 添加；第二行：农历 + 节气 + 休/班 */
 .tk-tl-dh-row1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -544,10 +556,15 @@ export default {
 .tk-tl-lunar-tag { flex: none; font-size: 11px; color: var(--c-cancel); white-space: nowrap; }
 /* 「今日」徽标外观见全局 .task-app .tk-today-badge；.tk-tl-today-badge 仅作钩子供窄屏隐藏规则使用。 */
 .tk-tl-rel { flex: none; color: var(--ink-soft); font-size: 11px; }
-.tk-tl-dayhead.today .tk-tl-wd { color: var(--gold); }
-/* 当日泳道浅主题色底：用 Obsidian 主题强调色（var(--gold) = --interactive-accent）做浅底，
-   伪元素叠加、opacity 很低，不依赖 color-mix，全版本可用；0.08 足够浅，不会盖住时间轴小时线。
-   想更明显把 0.08 调大即可。 */
+.tk-tl-dayhead.today .tk-tl-wd { color: var(--tk-today, var(--gold)); }
+/* 今天（自用改版，学 Mac 日历）：日期放进红色胶囊；有了它，「今日」徽标就不再显示 */
+.tk-tl-dayhead.today .tk-tl-dt {
+  flex: none; padding: 0 6px; border-radius: 999px;
+  background: var(--tk-today, var(--gold)); color: #fff; font-weight: 600; line-height: 17px;
+}
+.tk-tl-dayhead.today .tk-tl-today-badge { display: none; }
+/* 当日泳道浅底：颜色、浓淡见 tokens.css 的 --today-tint-*（自用改版：改成很淡的一层红）。
+   伪元素叠加、opacity 很低，不会盖住时间轴小时线。 */
 .tk-tl-dayhead.today,
 .tk-tl-adbg.today,
 .tk-tl-othercol.today,
@@ -579,12 +596,14 @@ export default {
 
 /* 全天任务行：泳道网格 —— 跨日任务一条横跨多列，单日任务为 1 列宽 */
 .tk-tl-allday {
-  --allday-pad: 4px; --allday-border: 1px;
+  /* 自用改版：每条从 30px 压到 22px（和月视图的胶囊差不多粗），上下留白 4px → 3px */
+  --allday-pad: 3px; --allday-border: 1px;
   display: grid; grid-template-columns: 54px repeat(var(--tl-cols, 7), minmax(0, 1fr));
-  grid-template-rows: repeat(var(--tl-lanes, 1), 30px);
+  grid-template-rows: repeat(var(--tl-lanes, 1), 22px);
   row-gap: 3px; padding: var(--allday-pad) 0;
-  border-top: var(--allday-border) solid var(--line);
-  border-bottom: var(--allday-border) solid var(--line);
+  /* 自用改版：上沿不再画线（吸顶日期行的下沿已经有一条发丝线），下沿换成发丝线 */
+  border-top: 0;
+  border-bottom: var(--allday-border) solid var(--tk-hair);
 }
 .tk-tl-gutter {
   display: flex; align-items: flex-start; justify-content: flex-end;
@@ -593,16 +612,18 @@ export default {
 /* 全天行左侧「全天」栏：跨所有泳道行（仅在全天网格内定位） */
 .tk-tl-allday .tk-tl-gutter { grid-column: 1; grid-row: 1 / -1; }
 /* 列背景 / 今日高亮 / 拖拽目标高亮（纯视觉，不拦截事件） */
-.tk-tl-adbg { grid-row: 1 / -1; border-left: 1px solid var(--line); pointer-events: none; }
+.tk-tl-adbg { grid-row: 1 / -1; border-left: 1px solid var(--tk-hair); pointer-events: none; }
 .tk-tl-adbg.drop-target { background: var(--gold-bg); }
 
+/* 全天任务条（自用改版：单行的条改成胶囊形，和月视图一致；放了子任务清单、变成多行的仍是圆角方块） */
 .tk-tl-aditem {
   position: relative;
   display: flex; align-items: center; gap: 5px; min-width: 0; cursor: grab;
-  margin: 0 1px; padding: 2px 6px; border-radius: 6px;
+  margin: 0 1px; padding: 2px 8px 2px 6px; border-radius: 999px;
   background: var(--panel); font-size: 11.5px; line-height: 1.35; color: var(--ink);
   overflow: hidden;
 }
+.tk-tl-aditem.has-sublist { border-radius: 10px; }
 /* 选中态：描边高亮，提示可拖动调整日期 */
 .tk-tl-aditem.selected { box-shadow: 0 0 0 2px var(--gold); padding-right: 16px; }
 /* 跨日期横跨条右侧小字：开始-结束日期区间（如 10/2-10/7），靠右、小号、低透明度 */
@@ -623,7 +644,8 @@ export default {
 .tk-tl-span-h-r::before { left: auto; right: 3px; }
 .tk-tl-aditem.selected .tk-tl-span-h { opacity: 1; pointer-events: auto; }
 .tk-tl-aditem.selected .tk-tl-span-h:hover::before { filter: brightness(1.12); }
-.tk-tl-aditem .tk-check { flex: none; }
+/* 条变细以后，前面的小圆圈也缩小到和月视图一样（原来是 20px 的大圆圈） */
+.tk-tl-aditem .tk-check { flex: none; width: 12px; height: 12px; font-size: 14px; line-height: 12px; }
 .tk-tl-aditem .tk-tl-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
 /* 跨日横跨条：续接端（非真实起止）不收圆角，以示「仍在延续」 */
 .tk-tl-aditem.cont-start { border-top-left-radius: 0; border-bottom-left-radius: 0; }
@@ -634,29 +656,31 @@ export default {
 /* 其他时间行：早于 / 晚于时间轴窗口的定时任务，归到时间轴上方的单独格子 */
 .tk-tl-other {
   display: grid; grid-template-columns: 54px repeat(var(--tl-cols, 7), minmax(0, 1fr));
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--tk-hair);
 }
 .tk-tl-other .tk-tl-gutter { white-space: pre-line; line-height: 1.25; text-align: right; }
-.tk-tl-othercol { display: flex; flex-direction: column; gap: 3px; min-height: 34px; padding: 4px; border-left: 1px solid var(--line); }
+.tk-tl-othercol { display: flex; flex-direction: column; gap: 3px; min-height: 34px; padding: 4px; border-left: 1px solid var(--tk-hair); }
 
-/* 其他时间任务项：标题在上、时间在标题下方 */
-.tk-tl-other-item { align-items: flex-start; line-height: 1.3; padding: 3px 6px; }
+/* 其他时间任务项：标题在上、时间在标题下方（两行，所以是圆角方块，不是胶囊） */
+.tk-tl-other-item { align-items: flex-start; line-height: 1.3; padding: 3px 6px; border-radius: 8px; }
 .tk-tl-other-body { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .tk-tl-aditem.tk-tl-other-item .tk-tl-sum { white-space: nowrap; }
 .tk-tl-aditem.tk-tl-other-item .tk-tl-time { margin-left: 0; padding-left: 0; }
 
 /* 主体：整点刻度 + 日列（小时线用重复渐变绘制） */
 .tk-tl-grid { display: grid; grid-template-columns: 54px repeat(var(--tl-cols, 7), minmax(0, 1fr)); position: relative; }
-/* 当前时间线：跨所有日列，主题金色虚线；左端小圆点落在时间轴刻度区 */
-.tk-tl-now { position: absolute; left: 54px; right: 0; height: 0; border-top: 2px dashed var(--gold); opacity: .8; pointer-events: none; z-index: 6; }
-.tk-tl-now::before { content: ''; position: absolute; left: -5px; top: -5px; width: 9px; height: 9px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 2px var(--paper); }
-.tk-tl-axis { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
-.tk-tl-tick { position: relative; border-bottom: 1px solid var(--line); box-sizing: border-box; }
+/* 当前时间线：跨所有日列；左端小圆点落在时间轴刻度区。
+   自用改版：学 Mac 日历，改成红色实线（原来是主题色虚线），和「今天」的红色是同一个颜色 */
+.tk-tl-now { position: absolute; left: 54px; right: 0; height: 0; border-top: 1.5px solid var(--tk-today, var(--gold)); pointer-events: none; z-index: 6; }
+.tk-tl-now::before { content: ''; position: absolute; left: -5px; top: -5px; width: 9px; height: 9px; border-radius: 50%; background: var(--tk-today, var(--gold)); box-shadow: 0 0 0 2px var(--paper); }
+/* 自用改版：刻度线、小时线换成更淡的发丝线（--tk-hair-soft），日与日之间的竖线用发丝线（--tk-hair） */
+.tk-tl-axis { display: flex; flex-direction: column; border-top: 1px solid var(--tk-hair-soft); }
+.tk-tl-tick { position: relative; border-bottom: 1px solid var(--tk-hair-soft); box-sizing: border-box; }
 .tk-tl-tick > span { position: absolute; top: -7px; right: 8px; font-size: 10.5px; color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tk-tl-axis .tk-tl-tick:first-child > span { top: 4px; }
 .tk-tl-col {
-  position: relative; border-left: 1px solid var(--line);
-  background-image: repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px var(--hour));
+  position: relative; border-left: 1px solid var(--tk-hair);
+  background-image: repeating-linear-gradient(to bottom, var(--tk-hair-soft) 0 1px, transparent 1px var(--hour));
 }
 .tk-tl-dropline {
   position: absolute;
@@ -697,6 +721,8 @@ export default {
 }
 .tk-tl-bt { display: flex; align-items: center; gap: 5px; min-width: 0; line-height: 24px; }
 .tk-tl-bt .tk-check { flex: none; }
+/* 周视图的列窄，任务块前面的小圆圈用和月视图一样的小号（日视图仍是原来的大圆圈） */
+.tk-tl-week .tk-tl-bt .tk-check { width: 12px; height: 12px; font-size: 14px; line-height: 12px; }
 .tk-tl-bt .tk-tl-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
 /* 「其他时间」行：标题与 ⏳ 徽标同一行（外层为纵向 flex，需行内容器） */
 .tk-tl-sumrow { display: flex; align-items: center; min-width: 0; gap: 2px; }
@@ -737,12 +763,17 @@ export default {
 @container (max-width: 700px) {
   .tk-tl-today-badge { display: none; }
   .tk-tl-dh-row2 { flex-direction: column; align-items: flex-start; gap: 1px; }
-  /* 仅周视图：隐藏任务前方的圆圈操作区（日视图保留圆圈）；标题换行、行高收紧 */
-  .tk-tl-week .tk-tl-aditem .tk-check,
-  .tk-tl-week .tk-tl-bt .tk-check { display: none; }
+  /* 仅周视图：标题换行、行高收紧（隐藏圆圈那条挪到下面的具名容器规则里了） */
   .tk-tl-week .tk-tl-aditem .tk-tl-sum,
   .tk-tl-week .tk-tl-bt .tk-tl-sum { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; white-space: normal; word-break: break-word; line-height: 1; text-overflow: ellipsis; text-align: justify; }
   .tk-tl-week .tk-tl-time { margin-left: 0; }
+}
+/* 仅周视图、时间轴窄（≤700px）时：隐藏任务前方的圆圈操作区（日视图保留圆圈）。
+   自用改版：这条改成按时间轴（具名容器 tk-tl）的宽度判断。subtasks.css 把周视图的每个任务块也设成了
+   尺寸容器，不具名的 @container 会去量任务块自己（总是不到 700px），结果周视图的圆圈一直被藏着。 */
+@container tk-tl (max-width: 700px) {
+  .tk-tl-week .tk-tl-aditem .tk-check,
+  .tk-tl-week .tk-tl-bt .tk-check { display: none; }
 }
 /* 周视图进一步收窄（面板 ≤480px，等价于窗口或面板 ≤480）：任务时间文字再小一些 */
 @container (max-width: 480px) {

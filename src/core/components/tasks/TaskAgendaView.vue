@@ -29,8 +29,10 @@
       <!-- 右侧：任务列表（整体居中） -->
       <div class="tk-ag-main" :class="{ 'has-postpone': g.kind === 'overdue' }" v-show="!ctx.agendaCollapsed[g.kind]">
         <div v-if="!g.tasks.length" class="tk-ag-none" :class="{ 'is-today': g.isToday }">{{ $t('app.dayEmpty') }}</div>
+        <!-- --tk-dot（自用改版）：时间轴上那个小圆圈用任务自己的颜色，圆圈在卡片外面，所以挂在整行上 -->
         <div v-for="t in g.tasks" :key="t.guid" class="tk-ag-row"
              :class="{ done: t.completed || t.cancelled, dragging: ctx.dragGuid === t.guid }"
+             :style="ctx.agendaDot(t)"
              draggable="true" :title="ctx.dragHint(t)"
              @dragstart="ctx.onDragStart(t, $event)" @dragend="ctx.onDragEnd" @click="ctx.onTaskClick(t, $event)"
              @contextmenu.prevent="ctx.openCtx(t, $event)">
@@ -167,9 +169,12 @@ export default {
 .tk-ag { position: relative; display: flex; align-items: flex-start; gap: 16px; padding: 10px 0 4px; margin-bottom: 12px; }
 .tk-ag.drop-target { border-radius: 12px; box-shadow: 0 0 0 1px var(--gold) inset; }
 /* 左侧日期列：吸顶固钉（Affix，滚动时钉在顶部），紧贴左缘 */
-.tk-ag-side { position: sticky; top: 8px; align-self: flex-start; flex: none; width: 96px; display: flex; align-items: flex-start; gap: 7px; padding: 12px 0 12px 10px; }
+/* 自用改版：任务卡片压紧以后，上下留白从 12px 减到 6px，日期数字和第一条任务仍大致齐平 */
+.tk-ag-side { position: sticky; top: 8px; align-self: flex-start; flex: none; width: 96px; display: flex; align-items: flex-start; gap: 7px; padding: 6px 0 6px 10px; }
 .tk-ag-side.clickable { cursor: pointer; }
 .tk-ag-num { min-width: 26px; text-align: center; font-size: 24px; font-weight: 700; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* 今天的日期数字用红色（自用改版：今天统一用红色，见 tokens.css 的 --tk-today） */
+.tk-ag.is-today .tk-ag-num { color: var(--tk-today, var(--gold)); }
 .tk-ag-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
 .tk-ag-sub { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
 .tk-ag-wd { font-size: 12.5px; font-weight: 700; line-height: 1.2; color: var(--ink); }
@@ -208,20 +213,24 @@ export default {
    列宽固定 80px 保证时间轴竖线在行间对齐，不随内容宽度抖动；overflow-wrap 兜底长时段不裁切 */
 .tk-ag-time { display: flex; align-items: center; justify-content: flex-end; padding-right: 7px; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: pre-line; overflow-wrap: anywhere; text-align: right; line-height: 1.3; }
 .tk-ag-axis { position: relative; display: flex; align-items: center; justify-content: center; }
-.tk-ag-axis::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--line); transform: translateX(-50%); }
+.tk-ag-axis::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--tk-hair); transform: translateX(-50%); }
 /* 时间轴首尾：线只连到圆点，不超出 */
 .tk-ag-row:first-child .tk-ag-axis::before { top: 50%; }
 .tk-ag-row:last-child .tk-ag-axis::before { bottom: 50%; }
-/* 时间轴圆点：兼作「完成待办」可点击开关；尺寸/配色与列表视图 .tk-check 统一；面板色圆盘遮挡轴线 */
-.tk-ag-dot { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--panel); font-size: 20px; line-height: 1; color: var(--ink-soft); cursor: pointer; transition: color .15s ease, transform .12s ease; }
-.tk-ag-dot:hover { color: var(--gold); }
+/* 时间轴圆点：兼作「完成待办」可点击开关；尺寸与列表视图 .tk-check 统一；面板色圆盘遮挡轴线。
+   自用改版：还没做完的任务，圆点用任务自己的颜色（--tk-dot，挂在 .tk-ag-row 上）；做完是绿勾、取消是红减号，照旧。
+   鼠标停上去时稍微压暗一点，提示可以点 */
+.tk-ag-dot { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--panel); font-size: 20px; line-height: 1; color: var(--tk-dot, var(--ink-soft)); cursor: pointer; transition: color .15s ease, filter .15s ease, transform .12s ease; }
+.tk-ag-dot:hover { filter: brightness(.8); }
 .tk-ag-dot:active { transform: scale(.9); }
 .tk-ag-dot.done { color: var(--c-done); }
 .tk-ag-dot.cancel { color: var(--c-cancel); }
-.tk-ag-card { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 10px 20px; padding: 20px 10px; border-radius: 10px; border-left: 3px solid var(--ag-bar, var(--line)); min-width: 0; transition: filter .15s ease; }
+/* 任务卡片。自用改版：去掉左边的色条，颜色只靠浅底色和前面的小圆点；
+   上下留白从 20px 压到 6px，一行和四象限的一行差不多高 */
+.tk-ag-card { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin: 2px 20px 2px 10px; padding: 6px 12px; border-radius: 10px; min-width: 0; transition: filter .15s ease; }
 /* 卡片首行：标题、⏳、区间、子任务进度（自用改版：卡片改为上下两段，下面放子任务清单） */
 .tk-ag-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.tk-ag-card.has-subs { padding-top: 14px; padding-bottom: 10px; }
+.tk-ag-card.has-subs { padding-top: 7px; padding-bottom: 6px; }
 .tk-ag-subprog { margin-left: auto; }
 .tk-ag-card:hover { filter: brightness(.97); }
 .tk-ag-sum { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
@@ -246,6 +255,6 @@ export default {
 }
 /* 极窄（≤480px）：紧凑卡片留白 */
 @container (max-width: 480px) {
-  .tk-ag-card { margin: 8px 8px; padding: 14px 8px; }
+  .tk-ag-card { margin: 2px 6px; padding: 6px 8px; }
 }
 </style>

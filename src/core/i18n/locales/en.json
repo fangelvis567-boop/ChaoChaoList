@@ -319,6 +319,7 @@
     "colorScheme": "Theme color scheme",
     "colorSchemeDesc": "Color scheme for task blocks in the day, week and month views.",
     "schemeDefault": "Default",
+    "schemeLiuli": "Glaze",
     "schemeMorandi": "Morandi",
     "schemeJelly": "Jelly",
     "schemeSpring": "Spring",

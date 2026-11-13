@@ -268,25 +268,45 @@ export default {
 <style>
 /* ===== 月视图 ===== */
 .tk-monthview { flex: 1 1 auto; min-height: 0; overflow: hidden; container-type: inline-size; --cel-head: 30px; --lane-h: 24px; }
-.tk-month-wrap { display: flex; align-items: flex-start; height: 100%; overflow: hidden; }
-.tk-month-card { flex: 1 1 auto; min-width: 0; min-height: 0; align-self: stretch; overflow-y: auto; }
-/* 星期头部与日期网格统一：细边框连续风格，1px 间隙透出边框色，整体 10px 圆角 */
-.tk-month-weekdays { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; margin-bottom: 0; background: var(--line); }
-.tk-month-wd { text-align: center; font-size: 12px; font-weight: 600; color: var(--ink-soft); letter-spacing: 1px; background: var(--panel); padding: 6px 0; }
-.tk-month-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; background: var(--line); }
+/* 自用改版：月历和待办池现在都是带阴影的玻璃面板，左右和底边各留一点空，阴影不被 overflow 裁掉 */
+.tk-month-wrap { display: flex; align-items: flex-start; height: 100%; overflow: hidden; box-sizing: border-box; padding: 0 4px 10px; }
+/* 自用改版：整张月历放进一块圆角玻璃面板（对齐四象限视图）：近白的底、一圈发丝细边、很小的阴影。
+   细边用 border 而不是 inset 阴影——这里是滚动容器，inset 阴影会被吸顶的星期行盖住。令牌见 tasks-shared.css。 */
+.tk-month-card {
+  flex: 1 1 auto; min-width: 0; min-height: 0; align-self: stretch; overflow-y: auto;
+  border: 1px solid var(--tk-card-line); border-radius: 16px;
+  background: var(--tk-card-bg); box-shadow: var(--tk-card-shadow);
+}
+/* 星期行（吸顶）。自用改版：做成磨砂玻璃，星期之间不再画竖线，下沿一条发丝线。
+   仍保留 1px 的列间隙，让星期名和下面的日期格严格对齐 */
+.tk-month-weekdays {
+  position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; margin-bottom: 0;
+  background: var(--tk-frost);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  backdrop-filter: blur(16px) saturate(1.6);
+  box-shadow: 0 1px 0 var(--tk-hair);
+}
+.tk-month-wd { text-align: center; font-size: 12px; font-weight: 600; color: var(--ink-soft); letter-spacing: 1px; background: transparent; padding: 7px 0; }
+/* 日期格之间的线：1px 间隙透出底下的颜色。自用改版：换成发丝线（很淡的墨色），
+   周行自己不再铺底色，免得周内的竖线叠两层、比周与周之间的横线深 */
+.tk-month-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; background: var(--tk-hair); }
 /* 周行：7 列网格；内部横跨条层与之同列模板，保证与日期格对齐 */
-.tk-mweek { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: var(--line); }
+.tk-mweek { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: transparent; }
 .cel {
   min-width: 0; min-height: 106px; padding: 0 4px 8px; display: flex; flex-direction: column;
   background: var(--panel); border: none; border-radius: 0;
   position: relative;
   transition: box-shadow .15s ease;
 }
-.cel.other { opacity: .45; }
+/* 不是本月的日子（自用改版，学 Mac 日历）：原来整格降透明、看着发灰；现在格子和任务照常，
+   只把日期、农历的字调淡 */
+.cel.other .cel-day,
+.cel.other .cel-lunar,
+.cel.other .cel-lunar-tag { color: var(--text-faint); }
+.cel.other .cel-hb { opacity: .5; }
 .cel:hover { box-shadow: var(--shadow); }
-.cel.today { box-shadow: inset 0 0 0 1px var(--gold); }
-/* 月视图今日格：与周视图同一套主题强调色浅底（var(--gold) 低透明 ::after 叠加），
-   不盖住任务块；沿用周视图主泳道的浅度 .08。今日格的金色内描边保留作为「今日」强提示。 */
+/* 月视图今日格：与周视图同一套浅底（--today-tint-* 低透明 ::after 叠加），不盖住任务块。
+   自用改版：去掉原来的主题色内描边，今天改由日期数字的红色圆点来提示（见下面 .cel.today .cel-day） */
 .cel.today::after {
   content: ''; position: absolute; inset: 0; z-index: 0;
   background: var(--today-tint-color, var(--gold));
@@ -307,15 +327,23 @@ export default {
 .cel-hb.is-rest { color: var(--text-on-accent); background: var(--c-done); }
 .cel-hb.is-work { color: var(--text-on-accent); background: var(--c-cancel); }
 .cel-day { font-size: 14px; font-weight: 600; color: var(--ink); }
+/* 今天（自用改版，学 Mac 日历）：日期数字放进红色圆点；有了它，「今日」徽标就不再显示 */
+.cel.today .cel-day {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 22px; padding: 0 4px; box-sizing: border-box; border-radius: 999px;
+  background: var(--tk-today, var(--gold)); color: #fff;
+}
 /* 月视图今日格「今日」徽标：外观见全局 .tk-today-badge，此处仅补垂直居中对齐日期数字 */
 .cel-today { align-self: center; }
+.cel.today .cel-today { display: none; }
 .cel-lunar { font-size: 11px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cel-lunar-tag { font-size: 11px; color: var(--c-cancel); white-space: nowrap; }
 .cel-tasks { min-width: 0; margin-top: calc(var(--week-lanes, 0) * var(--lane-h, 24px) + 2px); display: flex; flex-direction: column; gap: 3px; overflow-y: auto; }
 .cel-task {
   min-width: 0;
   display: flex; align-items: center; gap: 4px; font-size: 11.5px; line-height: 1.35; color: var(--ink);
-  background: var(--panel); border-radius: 6px; padding: 2px 6px;
+  /* 自用改版：改成胶囊形（学 Mac 日历的月视图） */
+  background: var(--panel); border-radius: 999px; padding: 2px 8px 2px 6px;
   cursor: grab; overflow: hidden; transition: box-shadow .15s ease, opacity .15s ease;
 }
 .cel-task:not(.selected):hover { box-shadow: var(--shadow); }
@@ -334,8 +362,9 @@ export default {
 }
 .cel-bar {
   position: relative; pointer-events: auto; align-self: stretch; min-width: 0; overflow: hidden;
-  display: flex; align-items: center; gap: 4px; margin: 0 1px 3px; padding: 2px 7px;
-  font-size: 11.5px; line-height: 1.35; color: var(--ink); border-radius: 6px; cursor: grab;
+  display: flex; align-items: center; gap: 4px; margin: 0 1px 3px; padding: 2px 8px 2px 6px;
+  /* 自用改版：跨日期条也改成胶囊形；续接到下一周的那一端仍是方的（见 .cont-start / .cont-end） */
+  font-size: 11.5px; line-height: 1.35; color: var(--ink); border-radius: 999px; cursor: grab;
   transition: box-shadow .15s ease, opacity .15s ease;
 }
 /* 选中态用 outline 画金色描边：独立于 box-shadow，绝不会被 :hover 的 shadow 覆盖
