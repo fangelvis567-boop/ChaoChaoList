@@ -216,9 +216,10 @@ export class DadaTodoSettingTab extends PluginSettingTab {
       }),
       row('colorScheme', 'colorSchemeDesc', (s) => {
         s.addDropdown((dd) => {
-          dd.addOption('default', T('schemeDefault'));
-          // 琉璃（自用改版）：参考 Mac 日历的清透配色，定义见 tasks-logic.js 的 LIULI_COLORS
+          // 琉璃（自用改版）：参考 Mac 日历的清透配色，1.1.0 起是默认、排第一；定义见 tasks-logic.js 的 LIULI_COLORS
           dd.addOption('liuli', T('schemeLiuli'));
+          // 经典：插件原来的默认配色（设置值仍是 default）
+          dd.addOption('default', T('schemeDefault'));
           dd.addOption('morandi', T('schemeMorandi'));
           dd.addOption('jelly', T('schemeJelly'));
           dd.addOption('spring', T('schemeSpring'));
@@ -227,7 +228,7 @@ export class DadaTodoSettingTab extends PluginSettingTab {
           dd.addOption('winter', T('schemeWinter'));
           // 额外配色选项由 EXTRA_SCHEME_OPTIONS 注入；免费版该表为空则不显示
           for (const opt of EXTRA_SCHEME_OPTIONS) dd.addOption(opt.key, t(opt.labelKey));
-          dd.setValue(plugin.settings.colorScheme || 'default');
+          dd.setValue(plugin.settings.colorScheme || 'liuli');
           dd.onChange(async (value) => {
             plugin.settings.colorScheme = value;
             await plugin.saveSettings();

@@ -5,6 +5,7 @@
 # 用法（在仓库根目录）：
 #   bash scripts/release.sh --dry-run    试运行：只做检查、打印将要做什么，不改任何东西
 #   bash scripts/release.sh              正式发布：当前版本还没发布过就直接发；发布过就把版本号末位 +1 再发
+#                                        （逢十进一：1.0.9 之后是 1.1.0，1.9.9 之后是 2.0.0）
 #   bash scripts/release.sh 1.1.0        正式发布：用指定的版本号（不能比当前小，格式 x.y.z）
 #
 # 它会读写什么：
@@ -80,7 +81,9 @@ if [ -n "$WANT_VERSION" ]; then
 elif ! tag_exists "$CUR" && ! release_exists "$CUR"; then
   NEW="$CUR"   # 当前版本还没发布过（比如第一次发布）：直接发这一版，不改版本号
 else
-  NEW=$(node -p "const v = '$CUR'.split('.').map(Number); v[2] += 1; v.join('.')")
+  # 末位 +1，逢十进一（用户 2026-11-13 定的规矩）：末位到 10 就归 0、中间位 +1；中间位到 10 也一样往前进。
+  # 例：1.0.9 → 1.1.0，1.1.9 → 1.2.0，1.9.9 → 2.0.0；已经发出去的 1.0.10 之后也是 1.1.0
+  NEW=$(node -p "const v = '$CUR'.split('.').map(Number); v[2] += 1; if (v[2] > 9) { v[2] = 0; v[1] += 1; } if (v[1] > 9) { v[1] = 0; v[0] += 1; } v.join('.')")
 fi
 [[ "$NEW" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "版本号格式不对：$NEW（要 x.y.z）"
 tag_exists "$NEW" && fail "标签 $NEW 已经存在"

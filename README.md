@@ -85,7 +85,7 @@ tags:
 | Option | Description |
 |---|---|
 | Open location | Left sidebar / main workspace tab / right sidebar |
-| Theme color scheme | Color scheme for task blocks in the timeline, calendar and other views: Default / Glaze (clear colors in the style of Apple Calendar; red, yellow, blue and green match the Eisenhower matrix) / Morandi / Jelly / Spring / Summer greens / Autumn / Winter; color derived from the task title, and the circle in front of each task takes the same color |
+| Theme color scheme | Color scheme for task blocks in the timeline, calendar and other views: Glaze (the default: clear colors in the style of Apple Calendar; red, yellow, blue and green match the Eisenhower matrix; every device switches to it once when it first updates to 1.1.0, after that your own choice sticks) / Classic (the original default) / Morandi / Jelly / Spring / Summer greens / Autumn / Winter; color derived from the task title, and the circle in front of each task takes the same color |
 | Show lunar calendar & holidays | Lunar dates, solar terms and holiday badges in day / week / month views; turn off for Gregorian only |
 | Journal folder | Folder holding your journals (dated tasks); the plugin scans it and subfolders for notes whose filename contains a date; default `/` means the vault root |
 | Journal load window | Load only the last N days of journals (30 / 90 / 180 / 365 / all; default all) — lower it on large vaults for better performance |

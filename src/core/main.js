@@ -2,7 +2,7 @@ import { ItemView, Plugin } from 'obsidian';
 import { createApp, reactive } from 'vue';
 import TasksApp from './views/TasksApp.vue';
 import { initTasksApi, ensureInboxFile } from './api/tasks.js';
-import { setColorScheme, setWeekStart, setTagColors } from './composables/tasks-logic.js';
+import { setColorScheme, setWeekStart, setTagColors, migrateColorScheme } from './composables/tasks-logic.js';
 import { normalizeMenuViews, normalizeMenuHidden, VIEW_MENU_ITEMS } from './composables/viewMenu.js';
 import { setTaskViewPref } from './composables/viewPrefs.js';
 import { initDeviceUser } from './composables/deviceUser.js';
@@ -261,6 +261,8 @@ export default class DadaTodoPlugin extends Plugin {
       : (typeof data.checklistTag === 'string' && data.checklistTag.trim()
         ? [data.checklistTag.trim()]
         : ['todoList']);
+    // 配色（自用改版，1.1.0 起）：默认琉璃；每台设备第一次装上 1.1.0 时统一换成琉璃一次，之后照用户自己选的来
+    const scheme = migrateColorScheme(data);
     this.settings = {
       // 打开位置：左侧栏 / 主工作区标签页 / 右侧栏
       openLocation: data.openLocation || 'main',
@@ -289,8 +291,11 @@ export default class DadaTodoPlugin extends Plugin {
       checklistShowJournal: data.checklistShowJournal ?? true,
       // 每日笔记加载窗口（天）：以今天为中心的对称窗口（前后各 N 天），默认 'all'；大库可调小以提升加载性能
       dailyLoadWindow: data.dailyLoadWindow || 'all',
-      // 任务块配色方案：default（默认）/ morandi（莫兰迪）/ jelly（卡通果冻），默认 default
-      colorScheme: data.colorScheme || 'default',
+      // 任务块配色方案：liuli（琉璃，默认）/ default（经典，插件原来的默认）/ morandi（莫兰迪）/ jelly（卡通果冻）……
+      // 取值由上面的 migrateColorScheme 决定（见 tasks-logic.js）
+      colorScheme: scheme.colorScheme,
+      // 这台设备是否已经统一换过一次琉璃（自用改版）：true 之后不再强制，照 colorScheme 来
+      liuliMigrated: scheme.liuliMigrated,
       // 标签颜色映射（issue #8）：{ 标签名: CSS 颜色 }，命中的任务块整块用该颜色
       tagColors: (data.tagColors && typeof data.tagColors === 'object' && !Array.isArray(data.tagColors)) ? data.tagColors : {},
       // 日 / 周视图时间轴显示范围（整点小时）：开始 0–23、结束 1–24，结束须晚于开始；默认 0–24（全天）
@@ -332,6 +337,8 @@ export default class DadaTodoPlugin extends Plugin {
     setColorScheme(this.settings.colorScheme);
     setWeekStart(this.settings.weekStart);
     setTagColors(this.settings.tagColors);
+    // 这次刚统一换成琉璃：存一次设置，把「已换过」的标记留下，下次启动就不再改用户的选择
+    if (scheme.changed) await this.saveSettings();
   }
 
   async saveSettings() {

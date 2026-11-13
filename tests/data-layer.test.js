@@ -11,7 +11,8 @@ import {
   parseTasks, serializeBlock, collectLineNos, splitDescription, descPreview,
   timeText, spansDays, moveToDay, shiftSpanToDay, tagMapper, rewriteTagsInText, cleanTagName,
   levelToPriorityEmoji, setTagColors, lunarTagText, holidayOf,
-  withTag, splitSummary, composeSummary, colorOf, itemColor, setColorScheme, COLOR_SCHEMES
+  withTag, splitSummary, composeSummary, colorOf, itemColor, setColorScheme, COLOR_SCHEMES,
+  DEFAULT_COLOR_SCHEME, migrateColorScheme
 } from '../src/core/composables/tasks-logic.js';
 import {
   DEVICE_USER_KEY, initDeviceUser, getDeviceUserTag, setDeviceUserTag, defaultTaskTags
@@ -807,7 +808,8 @@ test('月视图小组件：两个月的月历按每周开始日排；跨天长�
     eq(nov.weeks[2].bars.map((b) => [b.text, b.start, b.end, b.lane, b.contStart, b.contEnd]), [['跨三天', 3, 5, 0, false, false]], '跨天长条：周四到周六');
     eq([texts(day('2026-11-05')), texts(day('2026-11-20'))], [['主任务'], ['↳ 子任务另一天']], '子任务在自己那天另放一份 ↳ 副本');
     const fin = day('2026-11-03').chips[0];
-    eq([fin.text, fin.bg, fin.fg], ['收件箱带日期', '#4caf7d47', ''], '标签颜色当底色（与面板同一透明度），文字用默认色');
+    // 1.1.0 起默认配色是琉璃，标签色的浅底跟着淡到 .16（0x29）；原来的 .28 是 0x47
+    eq([fin.text, fin.bg, fin.fg], ['收件箱带日期', '#4caf7d29', ''], '标签颜色当底色（与面板同一透明度），文字用默认色');
     ok(/^#[0-9a-f]{8}$/.test(day('2026-11-05').chips[0].bg), '没设标签颜色的按配色方案取色');
 
     const all = nov.weeks.flatMap((wk) => wk.days);
@@ -1055,7 +1057,27 @@ test('琉璃配色：八种颜色、红黄蓝绿和四象限同色，小圆圈�
     eq(itemColor(u)['--tk-dot'], colorOf(u).fg, '其他方案的小圆圈同样取本色');
   } finally {
     setTagColors({});
-    setColorScheme('default');
+    setColorScheme(DEFAULT_COLOR_SCHEME);
+  }
+});
+
+test('琉璃是默认配色：每台设备第一次读设置时统一换成琉璃一次，之后照自己选的来', () => {
+  eq(DEFAULT_COLOR_SCHEME, 'liuli', '默认配色是琉璃');
+  // 还没换过的设备：不管原来是哪套，都换成琉璃，并要求存盘（把标记留下）
+  eq(migrateColorScheme({ colorScheme: 'morandi' }), { colorScheme: 'liuli', liuliMigrated: true, changed: true }, '原来是莫兰迪的换成琉璃');
+  eq(migrateColorScheme({ colorScheme: 'default' }), { colorScheme: 'liuli', liuliMigrated: true, changed: true }, '原来是经典的也换');
+  eq(migrateColorScheme({}), { colorScheme: 'liuli', liuliMigrated: true, changed: true }, '第一次装插件（设置为空）');
+  eq(migrateColorScheme(null), { colorScheme: 'liuli', liuliMigrated: true, changed: true }, '读不到设置时一样');
+  // 换过以后：照设置里存的来，不再改
+  eq(migrateColorScheme({ colorScheme: 'jelly', liuliMigrated: true }), { colorScheme: 'jelly', liuliMigrated: true, changed: false }, '换过以后自己选了果冻，就一直是果冻');
+  eq(migrateColorScheme({ colorScheme: 'liuli', liuliMigrated: true }), { colorScheme: 'liuli', liuliMigrated: true, changed: false }, '换过以后仍是琉璃，不用再存');
+  eq(migrateColorScheme({ liuliMigrated: true }), { colorScheme: 'liuli', liuliMigrated: true, changed: false }, '有标记但没存配色时用默认');
+  // 认不出的配色值退回琉璃
+  try {
+    setColorScheme('不存在的配色');
+    eq(COLOR_SCHEMES.liuli.includes(colorOf({ summary: '写周报', tags: [] })), true, '认不出的配色值退回琉璃');
+  } finally {
+    setColorScheme(DEFAULT_COLOR_SCHEME);
   }
 });
 

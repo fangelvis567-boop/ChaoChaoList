@@ -883,10 +883,10 @@ export function doneDay(t) {
 
 // ---------- 任务块配色（多套方案，可在设置中切换） ----------
 // 每套均为「浅底 + 同色深字/强调色」，按标题哈希取色（浅底深字）。
-// default = 插件默认配色；morandi = 莫兰迪低饱和灰调；jelly = 卡通果冻高饱和糖果色；
-// liuli = 琉璃，参考 Mac 日历的清透色（自用改版）。
+// liuli = 琉璃，参考 Mac 日历的清透色（自用改版，1.1.0 起是默认）；default = 插件原来的默认配色（现在叫「经典」）；
+// morandi = 莫兰迪低饱和灰调；jelly = 卡通果冻高饱和糖果色。
 
-// 插件默认配色（default）
+// 插件原来的默认配色（设置值 default；自用改版 1.1.0 起默认改成琉璃，这套在设置里改名「经典」）
 export const TIMELINE_COLORS = [
   { bg: 'rgba(244, 67, 54, .18)', fg: '#c62828' },  // 红
   { bg: 'rgba(216, 27, 96, .18)', fg: '#ad1457' },  // 玫红（替代橙）
@@ -1020,11 +1020,27 @@ export function registerColorScheme(key, colors, opts = {}) {
   if (opts.labelKey) EXTRA_SCHEME_OPTIONS.push({ key, labelKey: opts.labelKey });
 }
 
+// 默认配色（自用改版）：1.1.0 起是琉璃。原来默认的那套在设置里改名「经典」，设置值仍是 'default'
+export const DEFAULT_COLOR_SCHEME = 'liuli';
+
 // 当前生效的配色方案：由 main.js 在加载设置、以及设置变更时调用 setColorScheme 更新。
 // 视图组件在设置变更后通过 reloadOpenViews() 重载，从而用新方案重算颜色。
-let activeColorScheme = 'default';
+// 认不出的设置值（比如手改坏了）一律退回默认配色。
+let activeColorScheme = DEFAULT_COLOR_SCHEME;
 export function setColorScheme(name) {
-  activeColorScheme = COLOR_SCHEMES[name] ? name : 'default';
+  activeColorScheme = COLOR_SCHEMES[name] ? name : DEFAULT_COLOR_SCHEME;
+}
+
+// 读设置时决定用哪套配色（自用改版，1.1.0 起）：让所有设备统一换成琉璃一次。
+//   · 还没换过的设备（设置里没有 liuliMigrated 标记，包括第一次装插件的）：不管原来选的是哪套，都改成琉璃，并打上标记；
+//   · 换过以后：照设置里存的来。之后有人在设置里改成别的配色，就一直用他选的，不会每次启动又被改回琉璃。
+// 返回 { colorScheme, liuliMigrated, changed }；changed 为 true 时调用方要把设置存回去，标记才会留下。
+export function migrateColorScheme(data) {
+  const d = data || {};
+  if (d.liuliMigrated === true) {
+    return { colorScheme: d.colorScheme || DEFAULT_COLOR_SCHEME, liuliMigrated: true, changed: false };
+  }
+  return { colorScheme: DEFAULT_COLOR_SCHEME, liuliMigrated: true, changed: true };
 }
 
 // 标签颜色映射（issue #8）：由 main.js 在设置加载 / 变更时注入；键 = 标签名，值 = CSS 颜色。
