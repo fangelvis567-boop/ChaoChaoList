@@ -291,6 +291,8 @@
     "title": "ChaoChaoList",
     "openLocation": "開啟位置",
     "openLocationDesc": "面板開啟的區域，修改後立即生效。",
+    "startupMatrix": "開啟時先顯示四象限",
+    "startupMatrixDesc": "每次開啟這個庫，都把 ChaoChaoList 固定在主視窗的分頁裡，顯示在最前面並切到四象限；原本開著的筆記分頁都還在。使用時照樣能切到別的視圖。關掉這個分頁也沒關係，下次開啟會再出現。修改後下次開啟這個庫時生效。",
     "locLeft": "左側區域",
     "locMain": "主視窗",
     "locRight": "右側區域",

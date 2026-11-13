@@ -91,6 +91,13 @@ export default class DadaTodoPlugin extends Plugin {
     // 配置常驻内存（官方推荐模式：onload 时 await 读取）
     await this.loadSettings();
 
+    // 打开时先显示四象限（自用改版，设置项 startupMatrix，默认开）：只在打开这个库时做一次
+    // （启动 Obsidian、新开这个库的窗口）。插件中途被更新、重新加载时 layoutReady 已经是 true，
+    // 不动用户正在看的画面。具体做什么见 openHomeView。
+    this.homeOnStartup = !this.app.workspace.layoutReady && this.settings.startupMatrix !== false;
+    // 先把记住的视图改成四象限：Obsidian 恢复上次的标签页时，面板直接以四象限打开，不会先闪一下别的视图
+    if (this.homeOnStartup) setTaskViewPref({ view: 'matrix' });
+
     // 初始化 i18n：跟随 Obsidian 界面语言（zh-cn / en）
     await initI18n(this);
 
@@ -170,8 +177,49 @@ export default class DadaTodoPlugin extends Plugin {
     // 点小组件时打开的地址：obsidian://chaochao-list?vault=库名&view=matrix → 打开面板并切到四象限
     this.registerObsidianProtocolHandler('chaochao-list', (params) => { this.openFromUri(params); });
 
+    // 打开时先显示四象限（自用改版）：等 Obsidian 恢复完上次的标签页再做。
+    // homeReady 是做完的信号，从小组件点进来时 openFromUri 会先等它（见那里的说明）
+    this.homeReady = this.homeOnStartup
+      ? new Promise((resolve) => {
+        this.app.workspace.onLayoutReady(() => {
+          this.openHomeView()
+            .catch((e) => console.warn('[DadaTodo] 打开时先显示四象限失败：', e))
+            .finally(resolve);
+        });
+      })
+      : null;
+
     // 明暗主题切换后，自动重算依赖主题的配色（如深色 / 浅色变体、块内文字等），无需手动切换视图
     this.registerThemeColorRefresh();
+  }
+
+  /**
+   * 打开时先显示四象限（自用改版，设置项 startupMatrix，默认开）。打开这个库、Obsidian 恢复完上次的标签页后调用一次：
+   *   1. 用主窗口里已有的 ChaoChaoList 标签页；没有就在主窗口那组标签页的最前面新开一个
+   *      （那组里只有一个空白的「新标签页」时直接用它）；
+   *   2. 把它固定（Obsidian 的「固定标签页」：点笔记里的链接不会把它换掉）；
+   *   3. 放到最前面并切到四象限。
+   * 原来开着的笔记标签页不动，只是排在后面。左右侧栏、弹出的独立窗口里的面板不算「主窗口里的」。
+   * 用的过程中照样能切到别的视图；下次打开这个库又回到四象限。
+   */
+  async openHomeView() {
+    const { workspace } = this.app;
+    let leaf = workspace.getLeavesOfType(this.viewType).find((l) => l.getRoot() === workspace.rootSplit);
+    if (!leaf) {
+      // 主窗口最近用过的那个标签页；它所在的那组标签页就是新开的位置
+      const recent = workspace.getMostRecentLeaf(workspace.rootSplit);
+      const tabs = recent && recent.parent;
+      if (recent && recent.getViewState().type === 'empty') leaf = recent;
+      else if (tabs) leaf = workspace.createLeafInParent(tabs, 0);
+      else leaf = workspace.getLeaf('tab'); // 主窗口一个标签页都没有时，用 Obsidian 默认的新标签页位置
+      await leaf.setViewState({ type: this.viewType, active: true });
+    }
+    leaf.setPinned(true);
+    // 等面板真正加载出来：Obsidian 对后台的标签页是要显示时才加载
+    await workspace.revealLeaf(leaf);
+    workspace.setActiveLeaf(leaf, { focus: true });
+    const root = leaf.view && leaf.view.vueRoot;
+    if (root && root.view !== 'matrix' && typeof root.switchView === 'function') root.switchView('matrix');
   }
 
   /**
@@ -181,6 +229,9 @@ export default class DadaTodoPlugin extends Plugin {
    * @param {Object} params Obsidian 解析好的网址参数（含 view、date）
    */
   async openFromUri(params) {
+    // 点小组件时顺带启动了 Obsidian：先等「打开时先显示四象限」做完，再切到小组件点的视图。
+    // 不等的话，要么被四象限盖掉，要么两边各开一个标签页
+    if (this.homeReady) await this.homeReady;
     const view = String((params && params.view) || '');
     const known = VIEW_MENU_ITEMS.some((v) => v.key === view);
     if (known) setTaskViewPref({ view });
@@ -258,7 +309,9 @@ export default class DadaTodoPlugin extends Plugin {
     if (this.widgetExport) { this.widgetExport.stop(); this.widgetExport = null; }
     if (this.widgetToggle) { this.widgetToggle.stop(); this.widgetToggle = null; }
     if (this.widgetAppUpdate) { this.widgetAppUpdate.stop(); this.widgetAppUpdate = null; }
-    this.app.workspace.detachLeavesOfType(this.viewType);
+    // 不关掉面板所在的标签页（自用改版）：插件被更新、重新加载时，Obsidian 会在原来的位置把面板重新打开，
+    // 固定的标签页也就一直留着（Obsidian 官方也建议插件卸载时别关自己的标签页）。
+    // 以前这里会关掉所有面板：BRAT 一更新插件，固定的标签页就没了。
     // 反注册核心「页面预览」来源，清理设置项里的本插件条目
     teardownHoverPreview(this);
   }
@@ -276,6 +329,8 @@ export default class DadaTodoPlugin extends Plugin {
     this.settings = {
       // 打开位置：左侧栏 / 主工作区标签页 / 右侧栏
       openLocation: data.openLocation || 'main',
+      // 打开时先显示四象限（自用改版）：默认开。每次打开这个库，把面板固定在主窗口最前面并切到四象限（见 openHomeView）
+      startupMatrix: data.startupMatrix ?? true,
       // 菜单样式：horizontal（默认，底部横向胶囊）/ vertical（左侧竖向菜单，可展开收起）/
       // vertical-right（自用改版：右侧竖向菜单，其余和左侧的一样）
       menuStyle: data.menuStyle || 'horizontal',

@@ -137,6 +137,16 @@ export class DadaTodoSettingTab extends PluginSettingTab {
           });
         });
       }),
+      // 打开时先显示四象限（自用改版）：默认开；下次打开这个库时生效（做什么见 main.js 的 openHomeView）
+      row('startupMatrix', 'startupMatrixDesc', (s) => {
+        s.addToggle((tg) => {
+          tg.setValue(plugin.settings.startupMatrix !== false);
+          tg.onChange(async (value) => {
+            plugin.settings.startupMatrix = value;
+            await plugin.saveSettings();
+          });
+        });
+      }),
       row('menuStyle', 'menuStyleDesc', (s) => {
         s.addDropdown((dd) => {
           dd.addOption('horizontal', T('menuHorizontal'));

@@ -291,6 +291,8 @@
     "title": "ChaoChaoList Settings",
     "openLocation": "Open location",
     "openLocationDesc": "Where the panel opens. Changes apply immediately.",
+    "startupMatrix": "Show the quadrants on startup",
+    "startupMatrixDesc": "Each time this vault opens, ChaoChaoList is pinned as a tab in the main window, brought to the front and switched to the quadrants view. Your open note tabs stay. You can still switch views while working, and if you close the tab it comes back next time. Takes effect the next time this vault opens.",
     "locLeft": "Left sidebar",
     "locMain": "Main window",
     "locRight": "Right sidebar",

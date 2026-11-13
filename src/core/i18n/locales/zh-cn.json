@@ -291,6 +291,8 @@
     "title": "ChaoChaoList",
     "openLocation": "打开位置",
     "openLocationDesc": "面板打开的区域，修改后立即生效。",
+    "startupMatrix": "打开时先显示四象限",
+    "startupMatrixDesc": "每次打开这个库，都把 ChaoChaoList 固定在主窗口的标签页里，显示在最前面并切到四象限；原来开着的笔记标签页都还在。用的时候照样能切到别的视图。关掉这个标签页也没关系，下次打开会再出现。修改后下次打开这个库时生效。",
     "locLeft": "左侧区域",
     "locMain": "主窗口",
     "locRight": "右侧区域",
