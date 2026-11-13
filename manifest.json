@@ -1,7 +1,7 @@
 {
   "id": "chaochao-list",
   "name": "ChaoChaoList",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "minAppVersion": "1.13.0",
   "description": "Tasks and checklists in plain Markdown checkboxes. Day, week, month and agenda views, grouped checklists, subtasks, tags, links, drag-to-reschedule, lunar calendar and holidays. Fully local.",
   "author": "Elvis Fang",
