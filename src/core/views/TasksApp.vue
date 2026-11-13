@@ -1,5 +1,5 @@
 <template>
-  <div class="task-app" :data-color-scheme="plugin.settings.colorScheme" :class="{ 'tk-pro': verticalMenu, 'tk-pro-rail-open': verticalMenu && !proRailCollapsed }">
+  <div class="task-app" :data-color-scheme="plugin.settings.colorScheme" :class="{ 'tk-pro': verticalMenu, 'tk-pro-right': menuOnRight, 'tk-pro-rail-open': verticalMenu && !proRailCollapsed }">
     <div v-if="error" class="tk-err">{{ error }}</div>
     <!-- 核心「日记」插件未启用：有日期任务无法读写（顶部常驻提醒，不可手动关闭；开启日记插件后自动消失） -->
     <div v-if="!canUseDaily()" class="tk-onboard tk-warn">
@@ -82,7 +82,7 @@
 
     <!-- 底部悬浮胶囊视图切换（日/周/月/日程/清单/全部）；
          vertical 菜单样式下则为左侧固定可展开/收起菜单 -->
-    <view-pill :view="view" :vertical="verticalMenu" :rail-collapsed="proRailCollapsed" :plugin="plugin"
+    <view-pill :view="view" :vertical="verticalMenu" :rail-right="menuOnRight" :rail-collapsed="proRailCollapsed" :plugin="plugin"
                :menu-items="menuItems"
                @switch-view="switchView" @update:rail-collapsed="v => proRailCollapsed = v"
                @reorder-menu="reorderMenu" />
@@ -221,7 +221,13 @@ export default {
   computed: {
     // 是否采用左侧竖向菜单：由设置项 menuStyle 控制（horizontal=底部胶囊 / vertical=左侧竖向菜单）。
     // 直接读取响应式 settings，设置页改动后即时生效（无需重启）。基础版与 Pro 共用此开关，体验一致。
-    verticalMenu() { return (this.plugin.settings && this.plugin.settings.menuStyle) === 'vertical'; },
+    // （自用改版）vertical-right = 右侧竖向菜单：和左侧的是同一套菜单，只是贴在右边
+    verticalMenu() {
+      const style = this.plugin.settings && this.plugin.settings.menuStyle;
+      return style === 'vertical' || style === 'vertical-right';
+    },
+    // 竖向菜单是不是放在右侧：是的话面板让出右边的位置，菜单组件把竖栏贴到右边
+    menuOnRight() { return (this.plugin.settings && this.plugin.settings.menuStyle) === 'vertical-right'; },
     // 标签颜色映射（issue #8）：列表视图侧栏圆点据此显示实色 / 空心。
     // 必须是 computed——methods 里的同名函数经 ctx 传给子组件时是函数引用，子组件永远查空
     tagColors() { return (this.plugin.settings && this.plugin.settings.tagColors) || {}; },
@@ -1025,10 +1031,14 @@ export default {
   background: var(--paper);
 }
 
-/* 左侧固定菜单（vertical 样式）时让出左内边距，避免遮挡内容（含日程视图左导航）；
-   与 ViewPill 内 .tk-pro-rail 宽度同速动画，保持二者同步 */
-.task-app.tk-pro { padding-left: 52px; transition: padding-left .28s cubic-bezier(.4, 0, .2, 1); }
-.task-app.tk-pro.tk-pro-rail-open { padding-left: 132px; }
+/* 竖向菜单（vertical 样式）时让出左内边距，避免遮挡内容（含日程视图左导航）；
+   与 ViewPill 内 .tk-pro-rail 宽度同速动画，保持二者同步。
+   自用改版：菜单是悬浮的玻璃面板，离边 10px，所以让出的位置 = 10 + 菜单宽（收起 44 / 展开 124）+ 10 */
+.task-app.tk-pro { padding-left: 64px; transition: padding-left .28s cubic-bezier(.4, 0, .2, 1); }
+.task-app.tk-pro.tk-pro-rail-open { padding-left: 144px; }
+/* 右侧竖向菜单（自用改版）：左边恢复成平常的边距（10px），改为让出右边；宽度和左侧菜单一样 */
+.task-app.tk-pro.tk-pro-right { padding-left: 10px; padding-right: 64px; transition: padding-right .28s cubic-bezier(.4, 0, .2, 1); }
+.task-app.tk-pro.tk-pro-right.tk-pro-rail-open { padding-left: 10px; padding-right: 144px; }
 
 /* 顶栏样式已抽离至 TaskTopBar.vue */
 

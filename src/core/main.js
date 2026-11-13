@@ -264,7 +264,8 @@ export default class DadaTodoPlugin extends Plugin {
     this.settings = {
       // 打开位置：左侧栏 / 主工作区标签页 / 右侧栏
       openLocation: data.openLocation || 'main',
-      // 菜单样式：horizontal（默认，底部横向胶囊）/ vertical（左侧竖向菜单，可展开收起）
+      // 菜单样式：horizontal（默认，底部横向胶囊）/ vertical（左侧竖向菜单，可展开收起）/
+      // vertical-right（自用改版：右侧竖向菜单，其余和左侧的一样）
       menuStyle: data.menuStyle || 'horizontal',
       // 是否显示农历与节假日（日 / 周 / 月视图表头与日历格）
       showLunar: data.showLunar ?? true,

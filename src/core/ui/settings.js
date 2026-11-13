@@ -141,6 +141,8 @@ export class DadaTodoSettingTab extends PluginSettingTab {
         s.addDropdown((dd) => {
           dd.addOption('horizontal', T('menuHorizontal'));
           dd.addOption('vertical', T('menuVertical'));
+          // 自用改版：竖向菜单也可以放在右侧
+          dd.addOption('vertical-right', T('menuVerticalRight'));
           dd.setValue(plugin.settings.menuStyle || 'horizontal');
           dd.onChange(async (value) => {
             plugin.settings.menuStyle = value;

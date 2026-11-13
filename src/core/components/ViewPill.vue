@@ -61,14 +61,14 @@
        关键：必须直接作为 .task-app 的子节点，脱离 .tk-viewpill（其 height:0 会让内部
        absolute 轨道塌缩为 0 高度而不可见）。.task-app 为 position:relative 全高，
        故 top:0;bottom:0 才能铺满左侧；收起=仅图标竖栏，展开=图标+文字面板。 -->
-  <div v-else class="tk-pro-rail" :class="{ collapsed: railCollapsed }">
+  <div v-else class="tk-pro-rail" :class="{ collapsed: railCollapsed, right: railRight }">
     <div class="tk-pro-rail-items">
       <template v-for="(g, gi) in groups" :key="gi">
         <div v-if="gi > 0" class="tk-pro-rail-sep"></div>
         <div v-if="g.label" class="tk-pro-rail-group-h">{{ $t(g.label) }}</div>
         <button v-for="v in g.items" :key="v.key" type="button" draggable="true"
                 class="tk-pro-rail-item" :class="{ on: view === v.key, 'menu-drag-over': menuDragOverKey === v.key }"
-                v-tooltip="railCollapsed ? { text: $t(v.labelKey), placement: 'right' } : null"
+                v-tooltip="railCollapsed ? { text: $t(v.labelKey), placement: tipSide } : null"
                 @click="$emit('switch-view', v.key)"
                 @dragstart="onMenuDragStart(v.key, $event)" @dragover="onMenuDragOver(v.key, $event)"
                 @dragleave="onMenuDragLeave(v.key)" @drop="onMenuDrop(v.key, $event)" @dragend="onMenuDragEnd">
@@ -79,14 +79,14 @@
     </div>
     <!-- 折叠 / 展开：位于设置上方，与设置按钮同款样式；整组动作按钮置底，与上方导航以分隔线隔开 -->
     <button class="tk-pro-rail-item tk-pro-rail-toggle" type="button"
-            v-tooltip="railCollapsed ? { text: $t('app.expandViews'), placement: 'right' } : null"
+            v-tooltip="railCollapsed ? { text: $t('app.expandViews'), placement: tipSide } : null"
             @click="$emit('update:rail-collapsed', !railCollapsed)">
       <i class="la la-exchange-alt vp-ico"></i>
       <span class="vp-label">{{ $t('app.collapseViews') }}</span>
     </button>
     <!-- 设置：左侧导航最下方，点击打开插件设置页（基础版 / Pro 共用） -->
     <button class="tk-pro-rail-item tk-pro-rail-settings" type="button"
-            v-tooltip="railCollapsed ? { text: $t('app.settings'), placement: 'right' } : null"
+            v-tooltip="railCollapsed ? { text: $t('app.settings'), placement: tipSide } : null"
             @click="openSettings">
       <i class="la la-cog vp-ico"></i>
       <span class="vp-label">{{ $t('app.settings') }}</span>
@@ -108,6 +108,8 @@ export default {
     vertical: { type: Boolean, default: false },
     // 左侧菜单折叠态（由父组件持有并持久化）：true=收起(仅图标)，false=展开(图标+文字)
     railCollapsed: { type: Boolean, default: true },
+    // 竖向菜单放在右侧（自用改版，设置里的「右侧竖向菜单」）：竖栏贴到右边，其余和左侧的一样
+    railRight: { type: Boolean, default: false },
     // 插件实例：用于打开本插件设置页（由父组件 TasksApp 传入，确保 this.plugin 可用）
     plugin: { type: Object, default: null },
     // 菜单视图项（已按设置排序并过滤隐藏）：ViewPill 只负责渲染与拖拽，顺序/显隐由设置决定；
@@ -128,6 +130,8 @@ export default {
     this.collapsed = this.loadCollapsed();
   },
   computed: {
+    // 竖栏收起时，鼠标停在图标上的提示朝哪边弹出：菜单在左侧就朝右，在右侧就朝左（自用改版）
+    tipSide() { return this.railRight ? 'left' : 'right'; },
     // 菜单视图项：优先用设置传入的 menuItems（已排序 + 已过滤隐藏），否则回退全部视图默认顺序
     resolvedItems() {
       return (Array.isArray(this.menuItems) && this.menuItems.length) ? this.menuItems : VIEW_MENU_ITEMS;
@@ -375,67 +379,98 @@ export default {
   .tk-pill-v-enter-active, .tk-pill-v-leave-active { transition: none !important; }
 }
 
-/* ===== 左侧固定竖向菜单（vertical 菜单样式，可展开/收起） ===== */
-/* 固定在视图左缘，整高竖栏；收起态仅图标、展开态图标+文字。
-   宽度与 TasksApp 的 .task-app 左内边距同速动画，保证内容不被遮挡 */
+/* ===== 竖向菜单（左侧 / 右侧，vertical 菜单样式，可展开/收起） =====
+   自用改版：做成悬浮的玻璃面板（参照 macOS 的玻璃质感，和底部胶囊是同一路数）——
+   不贴边，四周留 10px；大圆角（收起时正好是一条竖着的胶囊）；半透明底 + 背景模糊；
+   一圈极细的描边、上沿一道高光、下方一层柔和的投影。
+   面板让出的位置在 TasksApp 的 .task-app.tk-pro 里（收起 64px、展开 144px），两处的数要一起改。 */
 .tk-pro-rail {
+  /* 玻璃的几样「材料」集中在这里，想调深浅、通透程度只改这几行 */
+  --tk-rail-bg: color-mix(in srgb, var(--panel-2) 55%, transparent);        /* 半透明的底色 */
+  --tk-rail-sheen: rgba(255, 255, 255, .34);                                 /* 从上往下淡出的一层光泽 */
+  --tk-rail-hairline: color-mix(in srgb, var(--ink) 10%, transparent);       /* 一圈极细的描边，也用作分隔线 */
+  --tk-rail-rim: rgba(255, 255, 255, .75);                                   /* 上沿的高光 */
+  --tk-rail-shadow: 0 3px 10px rgba(0, 0, 0, .09), 0 1px 2px rgba(0, 0, 0, .06);   /* 投影收得比较窄：紧贴着面板的一小圈 */
+  --tk-rail-hover: color-mix(in srgb, var(--ink) 7%, transparent);           /* 鼠标停在某一项上的底色 */
+  --tk-rail-on: color-mix(in srgb, var(--gold) 15%, transparent);            /* 当前视图那一项的底色 */
+
   position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 44px;                 /* 收起态：仅图标竖栏 */
+  left: 10px; top: 10px; bottom: 10px;
+  width: 44px;                 /* 收起态：一列图标 */
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  padding: 12px 0;
-  background: var(--panel-2);
-  border-right: 1px solid var(--line);
+  box-sizing: border-box;
+  padding: 8px 6px;
+  border-radius: 22px;
+  background: var(--panel-2);  /* 兜底：不支持 color-mix 时退回实色 */
+  background: linear-gradient(180deg, var(--tk-rail-sheen), transparent 38%), var(--tk-rail-bg);
+  box-shadow: var(--tk-rail-shadow), inset 0 0 0 1px var(--tk-rail-hairline), inset 0 1px 0 var(--tk-rail-rim);
+  backdrop-filter: blur(18px) saturate(1.8);
+  -webkit-backdrop-filter: blur(18px) saturate(1.8);
   z-index: 15;
   overflow: hidden;
   transition: width .28s cubic-bezier(.4, 0, .2, 1);
 }
-.tk-pro-rail:not(.collapsed) { width: 124px; }   /* 展开态：图标 + 文字面板（加宽以容纳中英文标签，避免裁剪/错位） */
-/* 底部「折叠」按钮：复用 .tk-pro-rail-item 样式（与设置按钮同款：图标+文字、hover 金底、圆角 9px）；
-   顶部加分隔线 + 间距，与上方导航隔开，整组动作按钮（折叠+设置）置于底部 */
-.tk-pro-rail-toggle { flex: none; margin-top: 10px; border-top: 1px solid var(--line); }
+/* 深色主题：高光、描边压暗，投影加重（.theme-dark 是 Obsidian 加在 <body> 上的） */
+.theme-dark .tk-pro-rail {
+  --tk-rail-bg: color-mix(in srgb, var(--panel-2) 62%, transparent);
+  --tk-rail-sheen: rgba(255, 255, 255, .07);
+  --tk-rail-hairline: rgba(255, 255, 255, .10);
+  --tk-rail-rim: rgba(255, 255, 255, .18);
+  --tk-rail-shadow: 0 3px 10px rgba(0, 0, 0, .40), 0 1px 2px rgba(0, 0, 0, .30);
+  --tk-rail-hover: rgba(255, 255, 255, .08);
+}
+.tk-pro-rail:not(.collapsed) { width: 124px; }   /* 展开态：图标 + 文字 */
+/* 右侧竖向菜单（自用改版）：悬浮在视图右边，其余和左侧的一样 */
+.tk-pro-rail.right { left: auto; right: 10px; }
+
 .tk-pro-rail-items {
   flex: 1 1 auto; min-height: 0;
   display: flex; flex-direction: column; gap: 4px;
-  padding: 0 6px; justify-content: flex-start;
+  justify-content: flex-start;
+  overflow-y: auto; scrollbar-width: none;       /* 视图太多、窗口太矮时可以滚，不显示滚动条 */
 }
-/* 左侧竖栏分组标题（无标签则不出）；收起态隐藏文字标题 */
+.tk-pro-rail-items::-webkit-scrollbar { display: none; }
+/* 分组标题（没有标签就不出）；收起态隐藏 */
 .tk-pro-rail-group-h {
   font-size: 10.5px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase;
-  color: var(--text-faint); padding: 12px 12px 4px; white-space: nowrap;
+  color: var(--text-faint); padding: 10px 6px 4px; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; flex: none;
 }
 .tk-pro-rail.collapsed .tk-pro-rail-group-h { display: none; }
-/* 折叠态：文字标题隐藏后，用横线分隔每个分组（首个分组前不画）；展开态标题已作分隔，故隐藏 */
+/* 收起态：标题隐藏后，用一条细线分隔每个分组（第一个分组前不画）；展开态有标题，不用线 */
 .tk-pro-rail-sep { display: none; }
 .tk-pro-rail.collapsed .tk-pro-rail-sep {
-  display: block; height: 0; border-top: 1px solid var(--line);
-  margin: 6px 10px; flex: none;
+  display: block; height: 0; border-top: 1px solid var(--tk-rail-hairline);
+  margin: 6px 4px; flex: none;
 }
+/* 菜单里的每一项：展开时是一条圆角的行（图标 + 靠左的文字），收起时是一个小圆钮 */
 .tk-pro-rail-item {
-  display: inline-flex; align-items: center; gap: 10px;
-  width: 100%; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px;
+  width: 100%; box-sizing: border-box; height: 32px; flex: none;
   border: none; background: transparent; color: var(--text-normal);
-  font-family: inherit; font-size: 13px; font-weight: 600;
-  padding: 9px 10px; border-radius: 9px; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 600; text-align: left;
+  padding: 0 5px; border-radius: 12px; cursor: pointer;
   box-shadow: none; white-space: nowrap;
   transition: background .15s ease, color .15s ease;
 }
 .tk-pro-rail-item .vp-ico { font-size: 18px; width: 22px; text-align: center; flex: none; }
-/* 标签单行显示、超长省略号收缩：避免中英文长度不一导致换行→图标垂直错位 */
-.tk-pro-rail-item .vp-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 收起态：居中仅图标，隐藏文字 */
-.tk-pro-rail.collapsed .tk-pro-rail-item { justify-content: center; padding: 9px 0; }
+/* 文字单行、靠左，太长就省略：避免中英文长短不一时换行，把图标顶歪 */
+.tk-pro-rail-item .vp-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.tk-pro-rail.collapsed .tk-pro-rail-item { justify-content: center; padding: 0; border-radius: 999px; }
 .tk-pro-rail.collapsed .vp-label { display: none; }
-.tk-pro-rail-item:not(.on):hover { background: var(--gold-bg); color: var(--ink); }
-.tk-pro-rail-item.on { background: var(--gold-bg); color: var(--gold); font-weight: 700; }
-/* 拖拽排序：悬停目标项描一圈金虚线，提示松手落点 */
+.tk-pro-rail-item:not(.on):hover { background: var(--tk-rail-hover); color: var(--ink); }
+.tk-pro-rail-item.on { background: var(--tk-rail-on); color: var(--gold); font-weight: 700; }
+/* 拖拽排序：悬停的那一项描一圈主题色，提示松手后落在哪 */
 .tk-pro-rail-item.menu-drag-over { box-shadow: inset 0 0 0 2px var(--gold); }
-/* 设置按钮：底部动作组最下方；分隔线已上移到折叠按钮，此处仅保留与折叠按钮的间距 */
-.tk-pro-rail-settings { margin-top: 8px; border-radius: 0; }
-.tk-pro-rail.collapsed .tk-pro-rail-settings { margin-top: 8px; }
+/* 底部的「折叠」和「设置」：和上面的视图之间隔一条细线 */
+.tk-pro-rail-toggle { margin-top: 12px; position: relative; overflow: visible; }
+.tk-pro-rail-toggle::before {
+  content: ''; position: absolute; left: 4px; right: 4px; top: -7px;
+  height: 0; border-top: 1px solid var(--tk-rail-hairline);
+}
+.tk-pro-rail-settings { margin-top: 4px; }
 
 /* 横向胶囊中设置按钮与视图项之间的竖向分隔线 */
 .tk-pill-sep { width: 1px; align-self: stretch; background: var(--line); margin: 6px 4px; flex: none; }
