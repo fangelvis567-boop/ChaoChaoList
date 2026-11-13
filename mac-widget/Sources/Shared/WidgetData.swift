@@ -142,6 +142,72 @@ struct TaskLine: Decodable, Sendable, Hashable {
     let depth: Int
     /// 是否已完成（只有关掉「隐藏已完成」时才会出现做完的）
     let done: Bool
+    /// 任务编号（配合小组件程序 0.4.0 的插件才写；旧数据里没有，这时圆圈只显示、不能点）
+    var id: String? = nil
+}
+
+// MARK: - 点圆圈勾选（0.4.0 起）
+//
+// 点四象限里某条任务前面的圆圈：小组件打开 chaochaolist-widget://toggle?r=…（r 是一条请求的 JSON，
+// 用 base64url 编码），系统把它交给宿主程序（Sources/App/HelperApp.swift）；宿主程序把请求写成
+// ~/Library/Application Support/ChaoChaoList/requests/ 里的一个小文件，再请系统刷新小组件。
+// Obsidian 里的插件看到这个文件就照着勾上 / 取消勾选，处理完删掉（插件 services/widgetToggle.js）。
+// 插件还没处理时，小组件先按请求把这条画成「已勾上 / 已取消」（PendingToggles），点完马上有反应。
+
+/// 一条勾选请求（宿主程序写进文件时再加上点击时间 at）
+struct ToggleRequest: Codable, Sendable {
+    /// 格式版本，固定 1（插件 composables/widgetToggle.js 的 TOGGLE_REQUEST_VERSION）
+    var v: Int = 1
+    /// 哪个库（插件只处理写给自己库的）
+    let vault: String
+    /// 任务编号
+    let id: String
+    /// 小组件上显示的任务标题：插件用它核对没有找错任务
+    let text: String
+    /// 要变成的状态：true = 勾上，false = 取消勾选
+    let done: Bool
+    /// 点击时间（毫秒）；小组件生成链接时还没有，宿主程序写文件时补上
+    var at: Double?
+}
+
+/// 生成点圆圈时打开的链接
+enum ToggleLink {
+    /// 这一行点了以后变成 done 状态的链接；没有任务编号或库名时返回 nil（圆圈只显示、不能点）
+    static func url(vault: String, line: TaskLine, done: Bool) -> URL? {
+        guard let id = line.id, !id.isEmpty, !vault.isEmpty else { return nil }
+        let req = ToggleRequest(vault: vault, id: id, text: line.text, done: done, at: nil)
+        guard let json = try? JSONEncoder().encode(req) else { return nil }
+        // base64url：把 + / 换成 - _，去掉末尾的 =，这样整串都能原样放进网址
+        let b64 = json.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return URL(string: "chaochaolist-widget://toggle?r=" + b64)
+    }
+}
+
+/// 已经点了、插件还没处理的勾选
+enum PendingToggles {
+    /// 请求文件所在的文件夹
+    static var dirURL: URL {
+        URL(fileURLWithPath: WidgetDataStore.realHome)
+            .appendingPathComponent("Library/Application Support/ChaoChaoList/requests")
+    }
+
+    /// 某个库里还没处理的勾选：任务编号 → 要变成的状态。同一条点了好几次时，以最后一次为准
+    static func load(vault: String) -> [String: Bool] {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: dirURL.path) else { return [:] }
+        var out: [String: Bool] = [:]
+        for name in names.sorted() where name.hasSuffix(".json") {
+            let url = dirURL.appendingPathComponent(name)
+            guard let raw = try? Data(contentsOf: url),
+                  let req = try? JSONDecoder().decode(ToggleRequest.self, from: raw),
+                  req.vault == vault else { continue }
+            out[req.id] = req.done
+        }
+        return out
+    }
 }
 
 /// 读数据文件

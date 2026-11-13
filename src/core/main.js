@@ -12,6 +12,8 @@ import { setupHoverPreview, teardownHoverPreview } from './hoverPreview.js';
 import { DadaTodoSettingTab } from './ui/settings.js';
 import { ReminderService } from './services/reminder.js';
 import { WidgetExportService } from './services/widgetExport.js';
+import { WidgetToggleService } from './services/widgetToggle.js';
+import { WidgetAppUpdateService } from './services/widgetAppUpdate.js';
 import { initI18n, t } from './i18n/index.js';
 import { tooltip } from './directives/tooltip.js';
 import { VueModal } from './ui/VueModal.js';
@@ -159,6 +161,12 @@ export default class DadaTodoPlugin extends Plugin {
     // 只在 Mac 桌面版生效，设置里可关（widgetExport）；读写范围见 services/widgetExport.js 开头
     this.widgetExport = new WidgetExportService(this);
     this.widgetExport.start();
+    // 小组件上点圆圈勾选任务（自用改版）：处理小组件程序写下的勾选请求，只认写给本库的
+    this.widgetToggle = new WidgetToggleService(this);
+    this.widgetToggle.start();
+    // 小组件程序自动更新（自用改版）：这台 Mac 装着的小组件程序比这版插件配套的旧，就自动下载新版换上
+    this.widgetAppUpdate = new WidgetAppUpdateService(this);
+    this.widgetAppUpdate.start();
     // 点小组件时打开的地址：obsidian://chaochao-list?vault=库名&view=matrix → 打开面板并切到四象限
     this.registerObsidianProtocolHandler('chaochao-list', (params) => { this.openFromUri(params); });
 
@@ -248,6 +256,8 @@ export default class DadaTodoPlugin extends Plugin {
   onunload() {
     if (this.reminder) { this.reminder.stop(); this.reminder = null; }
     if (this.widgetExport) { this.widgetExport.stop(); this.widgetExport = null; }
+    if (this.widgetToggle) { this.widgetToggle.stop(); this.widgetToggle = null; }
+    if (this.widgetAppUpdate) { this.widgetAppUpdate.stop(); this.widgetAppUpdate = null; }
     this.app.workspace.detachLeavesOfType(this.viewType);
     // 反注册核心「页面预览」来源，清理设置项里的本插件条目
     teardownHoverPreview(this);
@@ -273,6 +283,8 @@ export default class DadaTodoPlugin extends Plugin {
       showLunar: data.showLunar ?? true,
       // Mac 桌面小组件（自用改版）：是否把四象限的内容写到本机供小组件显示；默认开，只在 Mac 桌面版起作用
       widgetExport: data.widgetExport ?? true,
+      // 自动更新 Mac 小组件程序（自用改版）：默认开；只在这台 Mac 已经装了小组件程序时起作用
+      widgetAutoUpdate: data.widgetAutoUpdate ?? true,
       // 完成任务时是否在任务行追加「✅ 完成日期」标记；默认开。关闭后完成不写 ✅，开始/结束等日期标记不受影响
       addDoneDateMarker: data.addDoneDateMarker ?? true,
       // 无日期任务的存放文件（相对库根目录）

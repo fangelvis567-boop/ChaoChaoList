@@ -15,6 +15,8 @@ struct DataEntry: TimelineEntry {
     /// 这条内容从什么时候开始显示；月视图用它判断「今天」
     let date: Date
     let state: State
+    /// 已经点了、插件还没处理的勾选（四象限用；见 WidgetData.swift 的 PendingToggles）
+    var pending: [String: Bool] = [:]
 
     enum State {
         /// 正常：有数据
@@ -40,9 +42,12 @@ struct DataProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<DataEntry>) -> Void) {
         let now = Date()
         let state = readState(sampleIfMissing: false)
+        // 点过圆圈、插件还没处理的：先按点完的样子画，点了马上有反应
+        var pending: [String: Bool] = [:]
+        if case .data(let d) = state { pending = PendingToggles.load(vault: d.vault) }
         let cal = Calendar.current
         let midnight = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) ?? now.addingTimeInterval(86400)
-        let entries = [DataEntry(date: now, state: state), DataEntry(date: midnight, state: state)]
+        let entries = [DataEntry(date: now, state: state, pending: pending), DataEntry(date: midnight, state: state, pending: pending)]
         completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(30 * 60))))
     }
 
@@ -70,7 +75,7 @@ struct MatrixEntryView: View {
         switch entry.state {
         case .data(let d):
             if let m = d.matrix {
-                MatrixWidgetView(data: m)
+                MatrixWidgetView(data: m, vault: d.vault, pending: entry.pending)
                     .widgetURL(d.url("matrix"))
             } else {
                 WidgetMessageView(text: "数据里没有四象限")
@@ -93,7 +98,7 @@ struct MatrixWidget: Widget {
                 }
         }
         .configurationDisplayName("四象限")
-        .description("ChaoChaoList 的四象限视图，点一下打开 Obsidian")
+        .description("ChaoChaoList 的四象限视图：点任务前面的圆圈勾选，点别处打开 Obsidian")
         .supportedFamilies([.systemLarge])
     }
 }

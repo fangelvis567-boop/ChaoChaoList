@@ -1,9 +1,9 @@
 # ChaoChaoList 小组件（Mac 桌面）
 
-把 ChaoChaoList 的视图做成 Mac 桌面小组件，样子参照滴答清单的小组件。只显示、不能勾选，点一下打开 Obsidian 里对应的视图。
+把 ChaoChaoList 的视图做成 Mac 桌面小组件，样子参照滴答清单的小组件。点一下打开 Obsidian 里对应的视图；四象限里还能直接勾选任务。
 
 目前有（都是大尺寸）：
-- **四象限**：点任意处打开四象限视图。
+- **四象限**：每条任务前面有个圆圈（颜色跟这一格的主色走，做完是绿色对勾）。点圆圈 = 勾上 / 取消勾选，和在面板里点圆圈一样改笔记；点别处打开四象限视图。勾选要这台 Mac 上的 Obsidian 开着才会真正写进笔记——没开时小组件先显示成点过的样子，等下次打开 Obsidian 再写；放了 7 天还没写的作废。笔记改过、对不上那条任务时不会乱改，Obsidian 里会提示一句。（小组件程序 0.4.0 起）
 - **月视图**：这个月的月历，跨天任务画成长条，一格放不下的写「+N」；点某一天打开那天的日视图，点月份名打开月视图。插件同时导出下个月，所以月底之后即使 Obsidian 没开，小组件也能换到新的月份；每天零点「今天」的圆圈自己换到新的一天。
 
 小组件显示哪些任务和面板一致：面板里的「隐藏已完成」、子任务收起、顶栏的「按标签筛选」（只看某个人、某些标签的任务）怎么选，小组件就怎么显示；改了之后小组件会跟着刷新。
@@ -13,8 +13,9 @@
 | 部分 | 在哪 | 做什么 |
 |---|---|---|
 | 插件里的导出 | `src/core/services/widgetExport.js`、`src/core/composables/widgetSnapshot.js` | 任务有变化时，把小组件要显示的内容写到 `~/Library/Application Support/ChaoChaoList/widget-data.json`，再用 `open -g chaochaolist-widget://reload` 请宿主程序刷新 |
-| 宿主程序 | `Sources/App/HelperApp.swift` → `/Applications/ChaoChaoListWidgets.app` | 没有窗口、不占 Dock。收到刷新请求就通知系统重新读小组件数据；点小组件时把 `obsidian://` 地址转给 Obsidian |
-| 小组件扩展 | `Sources/Widget/`、`Sources/Shared/` | 系统需要时运行，读上面那个 JSON 文件画出界面。运行在沙盒里，只能读 `~/Library/Application Support/ChaoChaoList/` |
+| 宿主程序 | `Sources/App/HelperApp.swift` → `/Applications/ChaoChaoListWidgets.app` | 没有窗口、不占 Dock。收到刷新请求就通知系统重新读小组件数据；点小组件时把 `obsidian://` 地址转给 Obsidian；点四象限的圆圈时（`chaochaolist-widget://toggle?r=…`）把这条勾选写成 `~/Library/Application Support/ChaoChaoList/requests/` 里的一个小文件 |
+| 小组件扩展 | `Sources/Widget/`、`Sources/Shared/` | 系统需要时运行，读上面那个 JSON 文件画出界面（还没处理的勾选也读，先画成点过的样子）。运行在沙盒里，只能读 `~/Library/Application Support/ChaoChaoList/` |
+| 插件里的勾选处理 | `src/core/services/widgetToggle.js`、`src/core/composables/widgetToggle.js` | 盯着 `requests/` 文件夹，只处理写给本库的请求：按任务编号和标题找到那条任务，勾上 / 取消勾选，处理完删掉请求文件 |
 
 数据格式在插件的 `widgetSnapshot.js` 和这里的 `Sources/Shared/WidgetData.swift` 两处定义，改一边必须同步改另一边，并把版本号加 1。
 
@@ -49,7 +50,9 @@ bash mac-widget/scripts/install.sh             # 正式安装（再次运行 = �
 5. 那台 Mac 上的 Obsidian：用 BRAT 把 ChaoChaoList 更新到 1.0.6 或更新，插件设置里的「Mac 桌面小组件」保持打开（默认就是开的）。
 6. 桌面空白处右键 →「编辑小组件」→ 搜索 ChaoChaoList → 把「四象限」「月视图」拖到桌面。
 
-以后更新：先在终端运行 `pkill -x ChaoChaoListWidgetsExtension; pkill -x ChaoChaoListWidgets` 结束旧版，再按上面 1–4 步下载、替换、去隔离标记、打开一次。
+以后更新：**不用再手动装**（插件 1.1.1 起）。插件被 BRAT 更新后，下次启动 Obsidian 时（等 15 秒）会检查这台 Mac 上装的小组件程序：比这版插件配套的旧，就从同一个发布版本下载 `ChaoChaoListWidgets.zip`，核对发布时写进插件的 sha256 校验值，对得上才换上，并提示「Mac 小组件程序已自动更新」。旧版留一份在 `~/Library/Application Support/ChaoChaoList/app-update/old/`。没装小组件程序的 Mac 什么也不做；不想要自动更新，在插件设置里关掉「自动更新小组件程序」。代码见插件的 `src/core/services/widgetAppUpdate.js`；版本号和校验值由 `scripts/release.sh` 在构建时写进去，平时自己构建的插件里没有，自动更新就不起作用。
+
+插件还是 1.1.1 之前的版本、或关掉了自动更新时，手动更新的办法：先在终端运行 `pkill -x ChaoChaoListWidgetsExtension; pkill -x ChaoChaoListWidgets` 结束旧版，再按上面 1–4 步下载、替换、去隔离标记、打开一次。
 
 ## 开发时核对排版
 

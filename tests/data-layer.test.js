@@ -26,6 +26,10 @@ import { Tasks } from '../src/core/composables/useTasks.js';
 import {
   buildMatrixWidget, buildWidgetData, widgetTitle, buildMonthWidget, cssColorToHex
 } from '../src/core/composables/widgetSnapshot.js';
+import {
+  parseToggleRequest, findTaskForRequest, flattenTasks, TOGGLE_MAX_AGE_MS
+} from '../src/core/composables/widgetToggle.js';
+import { compareBuild, needsWidgetUpdate, widgetZipUrl } from '../src/core/composables/widgetAppVersion.js';
 import { ReminderService } from '../src/core/services/reminder.js';
 import { buildCalendarTasks, subProgress, visibleSubtasks } from '../src/core/composables/subtasks.js';
 import { buildChecklistRows } from '../src/core/composables/checklistRows.js';
@@ -1079,6 +1083,54 @@ test('琉璃是默认配色：每台设备第一次读设置时统一换成琉�
   } finally {
     setColorScheme(DEFAULT_COLOR_SCHEME);
   }
+});
+
+// ---------- 十四、小组件上点圆圈勾选（自用改版） ----------
+
+test('小组件点圆圈：请求格式检查；按编号和标题找回任务，行号对不上时在同一文件里按标题找，找不准就不动', () => {
+  const now = 1763000000000;
+  const f = '20-日常安排/2026-11-13.md';
+  const good = { v: 1, vault: '库', id: `2026-11-13#3#${f}`, text: '写周报', done: true, at: now - 1000 };
+  eq(parseToggleRequest(JSON.stringify(good), now), { ok: true, req: { vault: '库', id: good.id, text: '写周报', done: true, at: good.at } }, '正常的请求');
+  eq(parseToggleRequest('不是 JSON', now).reason, 'bad', '坏文件');
+  eq(parseToggleRequest(JSON.stringify(Object.assign({}, good, { done: 'yes' })), now).reason, 'bad', 'done 不是真假值');
+  eq(parseToggleRequest(JSON.stringify(Object.assign({}, good, { v: 2 })), now).reason, 'bad', '不认识的格式版本');
+  eq(parseToggleRequest(JSON.stringify(Object.assign({}, good, { id: '' })), now).reason, 'bad', '没有任务编号');
+  eq(parseToggleRequest(JSON.stringify(Object.assign({}, good, { at: now - TOGGLE_MAX_AGE_MS - 1 })), now).reason, 'stale', '放太久的作废');
+
+  const tasks = [
+    { guid: `2026-11-13#3#${f}`, summary: '写周报 #工作', completed: false, subtasks: [
+      { guid: `2026-11-13#4#${f}`, summary: '列提纲', completed: false }
+    ] },
+    { guid: `2026-11-13#6#${f}`, summary: '买菜', completed: false },
+    { guid: '2026-11-14#2#20-日常安排/2026-11-14.md', summary: '买菜', completed: false }
+  ];
+  const id = (x) => (x ? x.guid : null);
+  eq(flattenTasks(tasks).length, 4, '子任务也摊平');
+  eq(id(findTaskForRequest(tasks, { id: `2026-11-13#3#${f}`, text: '写周报' }, widgetTitle)), `2026-11-13#3#${f}`, '按编号找到，标题（去掉标签后）对得上');
+  eq(id(findTaskForRequest(tasks, { id: `2026-11-13#4#${f}`, text: '列提纲' }, widgetTitle)), `2026-11-13#4#${f}`, '子任务也能找到');
+  eq(id(findTaskForRequest(tasks, { id: `2026-11-13#5#${f}`, text: '买菜' }, widgetTitle)), `2026-11-13#6#${f}`, '行号变了：在同一个文件里按标题找到，别的日子的同名任务不算');
+  eq(findTaskForRequest(tasks, { id: `2026-11-13#3#${f}`, text: '已经删掉的任务' }, widgetTitle), null, '标题对不上、也没有同名的：不动');
+  const dup = tasks.concat([{ guid: `2026-11-13#9#${f}`, summary: '买菜', completed: false }]);
+  eq(findTaskForRequest(dup, { id: `2026-11-13#5#${f}`, text: '买菜' }, widgetTitle), null, '同一个文件里有两条同名的：不动');
+
+  const m = buildMatrixWidget([{ guid: `2026-11-13#3#${f}`, summary: '写周报', completed: false, priority: '' }]);
+  eq(m.quadrants.find((q) => q.level === 'none').items[0].id, `2026-11-13#3#${f}`, '小组件数据里带上任务编号');
+});
+
+// ---------- 十五、小组件程序自动更新（自用改版） ----------
+
+test('小组件程序自动更新：只在装着的比配套的旧时更新，绝不往旧了换；下载地址跟着插件版本走', () => {
+  eq([compareBuild('5', '6') < 0, compareBuild('6', '6'), compareBuild('10', '9') > 0], [true, 0, true], '构建号按数字比（10 比 9 新）');
+  eq(Number.isNaN(compareBuild('x', '6')), true, '不是数字的构建号比不了');
+  const want = { version: '0.4.0', build: '6', sha256: 'a'.repeat(64) };
+  eq(needsWidgetUpdate({ version: '0.3.0', build: '5' }, want), true, '装着 0.3.0：要更新');
+  eq(needsWidgetUpdate({ version: '0.4.0', build: '6' }, want), false, '已经是这一版：不动');
+  eq(needsWidgetUpdate({ version: '0.5.0', build: '7' }, want), false, '装着的更新（手动装的）：不往旧了换');
+  eq(needsWidgetUpdate({ version: '?', build: '' }, want), false, '读不出版本号：不动');
+  eq(needsWidgetUpdate(null, want), false, '没装小组件程序：不动');
+  eq(needsWidgetUpdate({ version: '0.3.0', build: '5' }, null), false, '插件里没有配套信息（平时自己构建的）：不动');
+  eq(widgetZipUrl('1.1.1'), 'https://github.com/fangelvis567-boop/ChaoChaoList/releases/download/1.1.1/ChaoChaoListWidgets.zip', '从同一个发布版本下载');
 });
 
 // ---------- 逐个运行并汇总 ----------

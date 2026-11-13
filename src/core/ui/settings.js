@@ -419,6 +419,16 @@ export class DadaTodoSettingTab extends PluginSettingTab {
             plugin.applyWidgetExport();
           });
         });
+      }),
+      // 自动更新小组件程序（自用改版）：只在 Mac 桌面版显示；关掉后插件不再替换 /Applications 里的小组件程序
+      row('widgetAutoUpdate', 'widgetAutoUpdateDesc', (s) => {
+        s.addToggle((tg) => {
+          tg.setValue(plugin.settings.widgetAutoUpdate !== false);
+          tg.onChange(async (value) => {
+            plugin.settings.widgetAutoUpdate = value;
+            await plugin.saveSettings();
+          });
+        });
       })] : []),
     ]);
 

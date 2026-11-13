@@ -124,11 +124,12 @@ export function buildMatrixWidget(tasks, opts = {}) {
     const pending = b.pending.slice().sort((a, c) => (dueOf(a) - dueOf(c)) || 0);
     const done = hideDone ? [] : b.done.slice().sort((a, c) => (c.completedAt || 0) - (a.completedAt || 0));
     const lines = [];
+    // id（自用改版）：任务编号，小组件上点圆圈勾选时靠它找回这条任务（见 composables/widgetToggle.js）
     for (const t of pending.concat(done)) {
-      lines.push({ text: widgetTitle(t.summary), depth: 0, done: !!t.completed });
+      lines.push({ text: widgetTitle(t.summary), depth: 0, done: !!t.completed, id: t.guid || '' });
       if (hasSubtasks(t) && !isFolded(t)) {
         for (const s of visibleSubtasks(t, hideDone)) {
-          lines.push({ text: widgetTitle(s.summary), depth: 1, done: !!(s.completed || s.cancelled) });
+          lines.push({ text: widgetTitle(s.summary), depth: 1, done: !!(s.completed || s.cancelled), id: s.guid || '' });
         }
       }
     }

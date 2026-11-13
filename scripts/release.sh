@@ -13,10 +13,11 @@
 #       GitHub 上已有的标签和发布版本（用 gh 只读查询）
 #   写（只在正式发布时）：
 #     1. 需要换版本号时：改上面四个文件里的版本号，提交一次「chore: 发布 x.y.z」并推送 main
-#     2. 运行 node tests/run.mjs（测试）和 npm run build（构建）。
-#        构建产物写进 chaochao-list/ 目录——测试库的插件目录软链到这里，会一起变成新版
-#     3. 打 Mac 桌面小组件的安装包：bash mac-widget/scripts/install.sh --package
+#     2. 打 Mac 桌面小组件的安装包：bash mac-widget/scripts/install.sh --package
 #        （只写 mac-widget/build/，不安装、不碰系统；需要本机装有 Xcode）
+#     3. 运行 node tests/run.mjs（测试）和 npm run build（构建）。构建时把小组件程序的版本号和
+#        安装包的校验值写进插件（各台 Mac 的插件靠它自动更新小组件程序）。
+#        构建产物写进 chaochao-list/ 目录——测试库的插件目录软链到这里，会一起变成新版
 #     4. 打标签 x.y.z 并推送到 GitHub
 #     5. 在 GitHub 仓库里创建发布版本 x.y.z，附上 main.js、manifest.json、styles.css，
 #        外加小组件安装包 ChaoChaoListWidgets.zip（名字固定，另一台 Mac 用
@@ -120,8 +121,8 @@ if [ "$DRY_RUN" = 1 ]; then
   if [ "$NEW" != "$CUR" ]; then
     say "  - 把 manifest.json、package.json、package-lock.json、versions.json 里的版本号改为 $NEW，提交「chore: 发布 $NEW」并推送 main"
   fi
-  say "  - 运行测试 node tests/run.mjs，构建 npm run build"
   say "  - 打 Mac 小组件安装包：bash mac-widget/scripts/install.sh --package（只写 mac-widget/build/）"
+  say "  - 运行测试 node tests/run.mjs，构建 npm run build（把小组件程序的版本号和安装包校验值写进插件，供自动更新用）"
   say "  - 打标签 $NEW 并推送到 GitHub"
   say "  - 在 $REPO_SLUG 创建发布版本 $NEW，附上 $BUILD_DIR/main.js、manifest.json、$BUILD_DIR/styles.css、$WIDGET_ZIP"
   exit 0
@@ -149,16 +150,26 @@ edit('versions.json', (o) => { o[ver] = minApp; });   // 版本号 → 最低 Ob
 JS
 fi
 
-# ---------- 4. 测试、构建 ----------
+# ---------- 4. 打小组件安装包、测试、构建 ----------
+# 先打 Mac 小组件安装包（不安装、不碰系统，只写 mac-widget/build/）。
+# 插件构建时要把小组件程序的版本号和这个安装包的 sha256 校验值写进 main.js（环境变量 CCL_WIDGET_APP，
+# 见 vite.config.js）：装了小组件程序的 Mac 启动 Obsidian 时，插件发现装的版本旧了，就从这次发布下载
+# 安装包、核对校验值后自动换上（src/core/services/widgetAppUpdate.js）。
+bash mac-widget/scripts/install.sh --package
+[ -s "$WIDGET_ZIP" ] || fail "小组件安装包没打出来：$WIDGET_ZIP"
+WIDGET_PLIST="mac-widget/build/ChaoChaoListWidgets.app/Contents/Info.plist"
+WIDGET_VER=$(plutil -extract CFBundleShortVersionString raw -o - "$WIDGET_PLIST") || fail "读不到小组件程序的版本号"
+WIDGET_BUILD=$(plutil -extract CFBundleVersion raw -o - "$WIDGET_PLIST") || fail "读不到小组件程序的构建号"
+WIDGET_SHA=$(shasum -a 256 "$WIDGET_ZIP" | awk '{print $1}')
+export CCL_WIDGET_APP="{\"version\":\"$WIDGET_VER\",\"build\":\"$WIDGET_BUILD\",\"sha256\":\"$WIDGET_SHA\"}"
+say "小组件程序 $WIDGET_VER（构建号 $WIDGET_BUILD），安装包校验值 $WIDGET_SHA"
 node tests/run.mjs
 npm run build
 for f in main.js styles.css manifest.json; do
   [ -s "$BUILD_DIR/$f" ] || fail "构建产物缺少 $BUILD_DIR/$f"
 done
 cmp -s manifest.json "$BUILD_DIR/manifest.json" || fail "构建目录里的 manifest.json 和仓库根目录的不一致"
-# Mac 小组件安装包（不安装、不碰系统，只写 mac-widget/build/）
-bash mac-widget/scripts/install.sh --package
-[ -s "$WIDGET_ZIP" ] || fail "小组件安装包没打出来：$WIDGET_ZIP"
+grep -qF "$WIDGET_SHA" "$BUILD_DIR/main.js" || fail "插件里没写进小组件安装包的校验值（检查 vite.config.js 的 __CCL_WIDGET_APP__）"
 
 # ---------- 5. 提交版本号、打标签、推送 ----------
 if [ "$NEW" != "$CUR" ]; then

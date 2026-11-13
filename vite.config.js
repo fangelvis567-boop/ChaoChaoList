@@ -42,6 +42,20 @@ const root = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = 'chaochao-list';
 const isDev = process.env.DADA_DEV === '1';
 
+// Mac 小组件程序的版本号和安装包校验值（自用改版）：只有发布脚本 scripts/release.sh 会通过环境变量
+// CCL_WIDGET_APP 传进来（形如 {"version":"0.4.0","build":"6","sha256":"…"}），插件靠它判断要不要自动更新
+// 小组件程序、核对下载的安装包（src/core/services/widgetAppUpdate.js）。平时自己构建没有这个变量，就是 null，
+// 自动更新什么也不做。
+function widgetAppInfo() {
+  const raw = process.env.CCL_WIDGET_APP;
+  if (!raw) return null;
+  const o = JSON.parse(raw);
+  if (!o || !/^\d+\.\d+\.\d+$/.test(o.version) || !/^\d+$/.test(o.build) || !/^[0-9a-f]{64}$/.test(o.sha256)) {
+    throw new Error('CCL_WIDGET_APP 的内容不对：' + raw);
+  }
+  return { version: o.version, build: o.build, sha256: o.sha256 };
+}
+
 /** 构建后把 manifest.json 拷进产物目录（软链方式接库时产物必须自带 manifest） */
 function copyManifest() {
   return {
@@ -57,6 +71,7 @@ export default defineConfig({
   // 编译期注入 dev 标志 + 兜底手机端无 process 全局
   define: {
     __DADA_DEV__: JSON.stringify(isDev),
+    __CCL_WIDGET_APP__: JSON.stringify(widgetAppInfo()),
     'process.env': JSON.stringify({ NODE_ENV: isDev ? 'development' : 'production' })
   },
   build: {
