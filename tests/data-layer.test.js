@@ -10,8 +10,12 @@ import {
 import {
   parseTasks, serializeBlock, collectLineNos, splitDescription, descPreview,
   timeText, spansDays, moveToDay, shiftSpanToDay, tagMapper, rewriteTagsInText, cleanTagName,
-  levelToPriorityEmoji, setTagColors, lunarTagText, holidayOf
+  levelToPriorityEmoji, setTagColors, lunarTagText, holidayOf,
+  withTag, splitSummary, composeSummary, colorOf
 } from '../src/core/composables/tasks-logic.js';
+import {
+  DEVICE_USER_KEY, initDeviceUser, getDeviceUserTag, setDeviceUserTag, defaultTaskTags
+} from '../src/core/composables/deviceUser.js';
 import {
   buildMatrixWidget, buildWidgetData, widgetTitle, buildMonthWidget, cssColorToHex
 } from '../src/core/composables/widgetSnapshot.js';
@@ -812,6 +816,104 @@ test('月视图小组件：两个月的月历按每周开始日排；跨天长�
     eq([sun.weekdays.join(''), sun.months[0].weeks[0].days[0].key, sun.months[0].weeks.length], ['日一二三四五六', '2026-11-01', 5], '每周从周日开始');
   } finally {
     setTagColors({});
+  }
+});
+
+// ============================================================
+// 十一、表情符号标签，和「这台设备的使用者」（两个人共用一个库，自用改版）
+// ============================================================
+
+test('表情符号标签：#🌻 #🥕 和文字标签一样被认出来；标题里本来就有的表情符号不算标签', async () => {
+  vaultWith({ 'Inbox.md': HEAD_INBOX
+    + '- [ ] 09:00 买🥕 #家务 #🌻 🔺 📅 2026-11-13\n'
+    + '- [ ] 交水费 #🥕\n'
+    + '- [ ] 一起的 #🌻 #🥕 🔕\n'
+    + '- [ ] 各种 #谁/🌻 #❤️ #👍🏽 #🇨🇳 #⭐⭐⭐ #a🌻b\n'
+    + '- [ ] 手写紧贴 #家务🔕\n'
+    + '- [ ] 打卡 #✅ #🌻🔁 every day\n' });
+  const items = body(await loadAll()).items;
+  const of = (name) => items.find((x) => x.summary.indexOf(name) === 0);
+  const buy = of('买🥕');
+  eq([buy.summary, buy.tags, buy.priority, buy.dueAt, buy.time], ['买🥕 #家务 #🌻', ['家务', '🌻'], '🔺', ms(2026, 11, 13, 9, 0), '09:00'],
+    '标签、优先级、日期、时间各归各位');
+  eq(of('交水费').tags, ['🥕'], '只有一个表情符号标签');
+  eq([of('一起的').tags, of('一起的').remind], [['🌻', '🥕'], false], '两个人的都带；🔕 仍是「不提醒」');
+  eq(of('各种').tags, ['谁/🌻', '❤️', '👍🏽', '🇨🇳', '⭐⭐⭐', 'a🌻b'], '标签组里的、带修饰符的、国旗、连着几个的、夹在文字里的');
+  eq([of('手写紧贴').tags, of('手写紧贴').remind], [['家务'], false], '标签后面紧贴着 🔕：标签读到它为止，🔕 仍是「不提醒」');
+  eq(of('打卡').tags, ['🌻'], '任务标记用的符号不算标签名：#✅ 不是标签，#🌻 读到 🔁 为止');
+
+  eq(splitSummary('买🥕 #家务 #🌻'), { title: '买🥕', links: [], tags: ['家务', '🌻'], muted: false }, '编辑窗口拆标题：标签拿走，标题里的 🥕 留着');
+  eq(composeSummary('买🥕', [], ['家务', '🌻']), '买🥕 #家务 #🌻', '编辑窗口拼回去');
+  eq(widgetTitle('买🥕 #家务 #🌻'), '买🥕', '小组件里不显示标签');
+});
+
+test('表情符号标签的名字：能用表情符号，不能用任务行里有固定含义的符号（📅 ✅ 🔺 🔁 🔕 等）', () => {
+  eq(['🌻', '#🥕', '谁/🌻', '❤️', 'a🌻b', '⭐⭐⭐', '🌻 🥕'].map(cleanTagName),
+    ['🌻', '🥕', '谁/🌻', '❤️', 'a🌻b', '⭐⭐⭐', '🌻-🥕'], '合格的（空格换成 -）');
+  eq(['✅', '📅', '➕', '🛫', '⏳', '❌', '🔺', '⏫', '🔼', '🔽', '⏬', '🔁', '🔕', '家务🔼', '🌻，'].map(cleanTagName),
+    ['', '', '', '', '', '', '', '', '', '', '', '', '', '', ''], '不合格的：任务标记用的符号、中文标点');
+  const ren = tagMapper({ kind: 'rename', from: '🌻', to: '🥕' });
+  eq(rewriteTagsInText('买菜 #🌻 #🌻菜 #谁/🌻', ren), '买菜 #🥕 #🌻菜 #谁/🌻', '改名：只改这一个标签，不碰名字只是开头相同的');
+  eq(rewriteTagsInText('买菜 #🌻 #家务', tagMapper({ kind: 'delete', from: '🌻' })), '买菜 #家务', '删除');
+});
+
+test('给标题补上使用者标签（快速添加框用）：已经带着就不重复，没设使用者就原样', () => {
+  eq(withTag('买菜', '🌻'), '买菜 #🌻', '没有标签的');
+  eq(withTag('买菜 #家务', '#🌻'), '买菜 #家务 #🌻', '已有别的标签：加在后面（标签名带 # 也行）');
+  eq(withTag('买菜 #🌻 #家务', '🌻'), '买菜 #🌻 #家务', '已经带着：不重复加');
+  eq(withTag('买🥕', '🥕'), '买🥕 #🥕', '标题里的表情符号不算已经带了标签');
+  eq(withTag('看 [#🌻](https://x.com/#🌻)', '🌻'), '看 [#🌻](https://x.com/#🌻) #🌻', '链接里的 # 不算');
+  eq([withTag('买菜', ''), withTag('  买菜  ', null)], ['买菜', '买菜'], '没设使用者：标题原样（去掉首尾空格）');
+});
+
+/** 假的 Obsidian app：只有「本机存储」两个接口，内容放在内存里（store）。 */
+function fakeApp() {
+  const store = new Map();
+  return {
+    store,
+    loadLocalStorage(key) { return store.has(key) ? store.get(key) : null; },
+    saveLocalStorage(key, value) { if (value == null) store.delete(key); else store.set(key, value); }
+  };
+}
+
+test('这台设备的使用者：存在本机存储里；留空 = 清掉；不能当标签用的名字不保存', () => {
+  const app = fakeApp();
+  initDeviceUser(app);
+  try {
+    eq([getDeviceUserTag(), defaultTaskTags()], ['', []], '没设置：新建任务不自动加标签');
+    eq(setDeviceUserTag(' #🌻 '), { ok: true, tag: '🌻' }, '去掉 # 和首尾空格后存下');
+    eq([app.store.get(DEVICE_USER_KEY), getDeviceUserTag(), defaultTaskTags()], ['🌻', '🌻', ['🌻']], '存的是标签名；新建任务预先带上它');
+    eq(setDeviceUserTag('✅'), { ok: false, tag: '🌻' }, '任务标记用的符号不能当使用者：不保存，原来的不变');
+    eq(setDeviceUserTag('a!b'), { ok: false, tag: '🌻' }, '带标点的名字：不保存');
+    eq(setDeviceUserTag('谁/🥕'), { ok: true, tag: '谁/🥕' }, '可以放在标签组里');
+    eq(setDeviceUserTag('  '), { ok: true, tag: '' }, '留空 = 清掉');
+    eq([app.store.has(DEVICE_USER_KEY), defaultTaskTags()], [false, []], '清掉后本机存储里不留这一项');
+    app.store.set(DEVICE_USER_KEY, '📅');
+    eq(getDeviceUserTag(), '', '存的内容不能当标签用（被别处改坏）：当作没设置');
+  } finally {
+    initDeviceUser(null);
+  }
+  eq([getDeviceUserTag(), setDeviceUserTag('🌻').ok], ['', false], '没有 app（如本测试环境）：读到空，保存不成功，也不报错');
+});
+
+test('带使用者标签新建任务：写进笔记的那一行带 #🌻，读回来能按标签上色', async () => {
+  const v = vaultWith({ 'Inbox.md': HEAD_INBOX });
+  const app = fakeApp();
+  initDeviceUser(app);
+  try {
+    setDeviceUserTag('🌻');
+    // 快速添加框：标题后面补上使用者标签
+    body(await createTask({ summary: withTag('买菜', getDeviceUserTag()) }));
+    // 编辑窗口：空白表单的标签栏预先放好使用者标签，保存时和标题拼在一起
+    body(await createTask({ summary: composeSummary('交水费', [], defaultTaskTags().concat(['家务'])) }));
+    eq(v.read('Inbox.md').split('\n').filter((line) => line.indexOf('- [ ]') === 0), ['- [ ] 买菜 #🌻', '- [ ] 交水费 #🌻 #家务'],
+      '写进收件箱的两行任务');
+    setTagColors({ '🌻': '#f5c518', '家务': '#4caf7d' });
+    const items = body(await loadAll()).items;
+    eq(items.map((x) => [x.tags, colorOf(x).fg]), [[['🌻'], '#f5c518'], [['🌻', '家务'], '#f5c518']], '任务块颜色跟着排在前面的使用者标签走');
+  } finally {
+    setTagColors({});
+    initDeviceUser(null);
   }
 });
 

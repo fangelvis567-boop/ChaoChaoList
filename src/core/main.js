@@ -5,6 +5,7 @@ import { initTasksApi, ensureInboxFile } from './api/tasks.js';
 import { setColorScheme, setWeekStart, setTagColors } from './composables/tasks-logic.js';
 import { normalizeMenuViews, normalizeMenuHidden, VIEW_MENU_ITEMS } from './composables/viewMenu.js';
 import { setTaskViewPref } from './composables/viewPrefs.js';
+import { initDeviceUser } from './composables/deviceUser.js';
 import { setupDevReload } from './dev/devReload.js';
 import { setupHoverPreview, teardownHoverPreview } from './hoverPreview.js';
 import { DadaTodoSettingTab } from './ui/settings.js';
@@ -98,6 +99,8 @@ export default class DadaTodoPlugin extends Plugin {
 
     // 任务数据层注入插件实例（vault / metadataCache 读写）
     initTasksApi(this);
+    // 「这台设备的使用者」存在本机（不进 data.json），读写要用到 app（自用改版）
+    initDeviceUser(this.app);
     // 核心「日记」插件未启用的提醒改为面板顶部提醒条（TasksApp 内，随面板实时检测）
 
     // 收件箱文件不存在时创建（首次使用 / 用户改路径后）；

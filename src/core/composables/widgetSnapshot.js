@@ -31,7 +31,7 @@
 // ============================================================================
 import {
   priorityToLevel, plainInline, spansDays, layoutSpanBars, groupTasksByDay, itemColor,
-  lunarTagText, holidayOf, todayKey
+  lunarTagText, holidayOf, todayKey, tagTokenRe
 } from './tasks-logic.js';
 import { hasSubtasks, visibleSubtasks, buildCalendarTasks } from './subtasks.js';
 import { MATRIX_QUADS } from './matrixQuads.js';
@@ -53,7 +53,7 @@ export const MONTH_MAX_CHIPS = 6;
  */
 export function widgetTitle(summary) {
   const text = plainInline(summary)
-    .replace(/(^|[\s(（])#[\p{L}\p{N}_\-/]+/gu, '$1')
+    .replace(tagTokenRe(), '$1')
     .replace(/\s+/g, ' ')
     .trim();
   return text || String(summary == null ? '' : summary).trim();

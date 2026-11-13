@@ -109,7 +109,8 @@
 // 列表视图（所有）：左侧筛选 + 右侧分组列表 / 卡片。
 // 共享状态与方法都在父级（ctx）；仅「快速新增」交互在此组件内（需本地 ref 聚焦）。
 import { Tasks } from '../../composables/useTasks.js';
-import { isImeKey } from '../../composables/tasks-logic.js';
+import { isImeKey, withTag } from '../../composables/tasks-logic.js';
+import { getDeviceUserTag } from '../../composables/deviceUser.js';
 import TaskFilters from './TaskFilters.vue';
 import TaskRow from './TaskRow.vue';
 
@@ -127,8 +128,10 @@ export default {
       this.quickAdd();
     },
     async quickAdd() {
-      const summary = (this.ctx.quick || '').trim();
-      if (!summary || this.ctx.adding) return;
+      const typed = (this.ctx.quick || '').trim();
+      if (!typed || this.ctx.adding) return;
+      // 这台设备设了「使用者」（如 🌻）就自动带上这个标签；自己已经写了就不重复加（自用改版）
+      const summary = withTag(typed, getDeviceUserTag());
       this.ctx.setAdding(true);
       try {
         // 选中清单时，新任务直接写入该清单文件

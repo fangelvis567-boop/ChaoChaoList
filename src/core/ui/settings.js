@@ -5,6 +5,7 @@ import { countInboxTasks, migrateInboxTasks, loadAll, loadChecklists, collectTag
 import { setColorScheme, setWeekStart, tagColorOf, usedTagColors, EXTRA_SCHEME_OPTIONS, isImeKey, tagMapper } from '../composables/tasks-logic.js';
 import { VIEW_MENU_ITEMS, DEFAULT_MENU_VIEWS, reorderViews } from '../composables/viewMenu.js';
 import { WidgetExportService } from '../services/widgetExport.js';
+import { getDeviceUserTag, setDeviceUserTag } from '../composables/deviceUser.js';
 
 // （自用改版）原先这里有「自检新版」：每次打开设置页都联网读取作者仓库的版本号。
 // 自用改版不跟随作者更新，已整段去掉；去掉后整个插件不再有任何联网请求。
@@ -512,6 +513,23 @@ export class DadaTodoSettingTab extends PluginSettingTab {
             plugin.settings.showScheduled = v === true;
             await plugin.saveSettings();
             plugin.reloadOpenViews();
+          });
+        });
+      }),
+      // 这台设备的使用者（自用改版）：两个人共用一个库时，在这台设备上新建任务自动带上这个标签（如 #🌻）。
+      // 它存在本机、不进 data.json（原因见 composables/deviceUser.js），所以这里不调 plugin.saveSettings()
+      row('deviceUser', 'deviceUserDesc', (s) => {
+        s.addText((tx) => {
+          tx.setPlaceholder(T('deviceUserPh'));
+          tx.setValue(getDeviceUserTag());
+          // 边输入边保存：能当标签用的名字（或清空）马上存下；不能用的先不存，原来的设置不变
+          tx.onChange((value) => { setDeviceUserTag(value); });
+          // 离开输入框时：把框里的内容换成真正生效的样子（去掉 #、空格变 -）；
+          // 这次填的不能当标签用，就提示一声并改回原来的
+          tx.inputEl.addEventListener('blur', () => {
+            const r = setDeviceUserTag(tx.getValue());
+            if (!r.ok) new Notice(t('app.tagNameInvalid'));
+            tx.setValue(r.tag);
           });
         });
       }),

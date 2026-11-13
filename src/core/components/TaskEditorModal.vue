@@ -133,6 +133,7 @@ import { TFile } from 'obsidian';
 import { Tasks } from '../composables/useTasks.js';
 import { splitSummary, composeSummary, sanitizeTag, isImeKey, PRIORITY_ICON, priorityToLevel, levelToPriorityEmoji, withAlpha, validHex, INBOX_KEY, weekdayLong } from '../composables/tasks-logic.js';
 import { chipInfo } from '../composables/dateDraft.js';
+import { defaultTaskTags } from '../composables/deviceUser.js';
 import DateTimePanel from './DateTimePanel.vue';
 import { LinkFormModal, ConfirmModal } from '../ui/modals.js';
 import { openTaskInFile } from '../utils/openTaskInFile.js';
@@ -275,7 +276,8 @@ export default {
   methods: {
     blank() {
       return {
-        guid: '', title: '', description: '', links: [], tags: [],
+        // 标签栏：这台设备设了「使用者」（如 🌻）就预先放上它，保存前可以删掉或换成别的（自用改版）
+        guid: '', title: '', description: '', links: [], tags: defaultTaskTags(),
         dueDate: this.defaultDate || '', dueTime: this.defaultTime || '',
         // 没有预设日期的新任务（收件箱、清单里新建）默认停在「无日期」（自用改版）；
         // 有预设日期的：带了时间（如双击时间轴空白格）是单个时间，没带就是全天——和滴答清单一样，时间要用再加

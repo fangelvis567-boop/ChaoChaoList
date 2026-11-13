@@ -431,9 +431,40 @@ function stripMute(text) {
   return String(text == null ? '' : text).split(MUTE_MARK).join(' ').replace(/\s+/g, ' ').trim();
 }
 
-// 行内 Markdown 正则：链接优先，标签需位于行首或空白/括号之后（与 Obsidian 一致）
+// ---------- 标签里能用哪些字符 ----------
+// 文字、数字、_ - /，再加表情符号（自用改版：两个人共用一个库时，用 #🌻、#🥕 这样的标签标明任务是谁的）。
+// Obsidian 本身就认表情符号标签，下面几类都在 Obsidian 里核对过：
+//   \p{Extended_Pictographic}  绝大多数表情符号（🌻 🥕 ⭐ 📝 …）
+//   \p{Emoji_Modifier}         肤色（👍🏽 里后面那一个字符）
+//   \p{Regional_Indicator}     国旗（🇨🇳 由两个这样的字符拼成）
+//   \uFE0F、\u20E3              跟在表情符号后面、看不见的修饰符（❤️ 的后半个、1️⃣ 的方框）
+// 故意不收 \u200D（把几个表情拼成一个的连接符，如 👨‍👩‍👧）：Obsidian 的标签读到它就结束，这里保持一致。
+// 写成字符串是为了拼进下面几条正则里，规则只在这一处维护。
+const TAG_CHARS = '\\p{L}\\p{N}_\\-/\\p{Extended_Pictographic}\\p{Emoji_Modifier}\\p{Regional_Indicator}\\uFE0F\\u20E3';
+// 任务行里有固定含义的符号：日期（➕ 🛫 ⏳ 📅 ✅ ❌）、优先级（⏫ 🔺 🔼 🔽 ⏬）、重复（🔁）、关提醒（🔕）。
+// 它们本身也是表情符号，但不能算进标签名：标签名读到它们就结束。
+// 这样手写的「#家务🔕」标签仍是「家务」、🔕 仍是「不提醒」；「#✅」也不算标签（都和认表情符号之前一样）。
+const RESERVED_MARKS = DATE_FIELDS.map((p) => p[1]).concat(['⏫', '🔺', '🔼', '🔽', '⏬', RECURRENCE_CHAR, MUTE_MARK]);
+// 标签名：一个或多个标签字符，其中每一个都不是上面的保留符号
+const TAG_BODY_SRC = '(?:(?!' + RESERVED_MARKS.join('|') + ')[' + TAG_CHARS + '])+';
+// 一个标签连同它前面的那个字符：(行首 / 空白 / 括号)#(标签名)。标签需位于行首或空白、括号之后（与 Obsidian 一致）
+const TAG_TOKEN_SRC = '(^|[\\s(（])#(' + TAG_BODY_SRC + ')';
+// 整个名字从头到尾都是合格的标签名（检查用户输入的标签名用）
+const TAG_NAME_RE = new RegExp('^' + TAG_BODY_SRC + '$', 'u');
+
+// 行内 Markdown 正则：链接优先，其次是标签。第 1、2 组是链接的文字和地址，第 3、4 组是标签前的字符和标签名
 function inlineRe() {
-  return /\[([^\]]*)\]\(([^)\s]+)\)|(^|[\s(（])#([\p{L}\p{N}_\-/]+)/gu;
+  return new RegExp('\\[([^\\]]*)\\]\\(([^)\\s]+)\\)|' + TAG_TOKEN_SRC, 'gu');
+}
+
+/**
+ * 匹配任务标题里每一个 #标签 的正则（每次调用给一个新的，免得全局匹配的位置互相干扰）。
+ * 第 1 组是标签前面的那个字符（空白或括号，行首时为空），第 2 组是标签名。
+ * 用来把标签从标题里去掉，例如 text.replace(tagTokenRe(), ' ')。
+ * @returns {RegExp}
+ */
+export function tagTokenRe() {
+  return new RegExp(TAG_TOKEN_SRC, 'gu');
 }
 
 // ---------- 标签管理（自用改版：删除、改名、移进移出标签组） ----------
@@ -550,7 +581,7 @@ export function splitSummary(summary) {
   const { tags, links } = parseInline(src);
   let text = src
     .replace(/\[([^\]]*)\]\(([^)\s]+)\)/g, ' ')
-    .replace(/(^|[\s(（])#[\p{L}\p{N}_\-/]+/gu, ' ');
+    .replace(tagTokenRe(), ' ');
   text = text.replace(/\s+/g, ' ').trim();
   // 仅在确实移除了链接/标签时，才清理残留的尾部分隔符（如「标题 |」）
   if (links.length || tags.length) text = text.replace(/[\s|]+$/, '').trim();
@@ -576,17 +607,34 @@ export function composeSummary(title, links, tags, opts = {}) {
   return text;
 }
 
+/**
+ * 给一行任务标题补上一个标签；标题里已经带着这个标签就不重复加（自用改版）。
+ * 用在快速添加框：这台设备设了「使用者」时，新任务自动带上使用者标签。
+ * 例：withTag('买菜 #家务', '🌻') → '买菜 #家务 #🌻'；withTag('买菜 #🌻', '🌻') → '买菜 #🌻'。
+ * @param {string} summary 任务标题原文
+ * @param {string} tag 标签名（带不带 # 都行）；空的话原样返回标题
+ * @returns {string}
+ */
+export function withTag(summary, tag) {
+  const text = String(summary == null ? '' : summary).trim();
+  const name = String(tag == null ? '' : tag).trim().replace(/^#+/, '');
+  if (!name) return text;
+  if (parseInline(text).tags.indexOf(name) >= 0) return text;
+  return text ? text + ' #' + name : '#' + name;
+}
+
 // 清洗用户输入的标签名（去掉 # 前缀与非法字符）
 export function sanitizeTag(name) {
   return String(name == null ? '' : name).trim().replace(/^#+/, '').replace(/[\s]+/g, '-');
 }
 
 // 自用改版（标签管理）：把输入的标签名 / 标签组名整理成能写进任务的样子——
-// 去掉开头的 #、空格换成 -、去掉首尾和重复的 /；只能有文字、数字、_ - /，也不能全是数字（Obsidian 不认纯数字标签）。
+// 去掉开头的 #、空格换成 -、去掉首尾和重复的 /；只能有文字、数字、表情符号、_ - /，不能全是数字（Obsidian 不认纯数字标签），
+// 也不能带任务行里有固定含义的符号（📅 ✅ 🔺 🔁 🔕 等，见 RESERVED_MARKS；TAG_NAME_RE 里已经排除）。
 // 不合格返回空串
 export function cleanTagName(input) {
   const s = sanitizeTag(input).replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
-  if (!s || !/^[\p{L}\p{N}_\-/]+$/u.test(s) || /^\d+$/.test(s)) return '';
+  if (!s || !TAG_NAME_RE.test(s) || /^\d+$/.test(s)) return '';
   return s;
 }
 
