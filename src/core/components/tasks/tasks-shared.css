@@ -5,6 +5,12 @@
    所有类名均以 tk- 前缀限定，并挂在 .task-app 容器下，避免全局污染。
    设计令牌（--gold 等）定义在 .task-app 上，经 CSS 变量继承到子组件。 */
 
+/* ===== 右侧竖向菜单再靠右一点（自用改版） =====
+   Obsidian 的视图容器（.view-content）四周自带内边距（默认 12px），菜单又离面板边 10px，
+   加起来离窗口右边 22px，看着偏左。用右侧竖向菜单时去掉视图容器右边的内边距，菜单离窗口右边只剩 10px。
+   只在右侧竖向菜单时生效（:has 判断面板上有没有 tk-pro-right）；左侧竖向菜单、底部横向菜单不受影响。 */
+.view-content:has(> .dada-todo-root > .task-app.tk-pro-right) { padding-right: 0; }
+
 /* ===== 统一「今日」徽标（日/周/月/日程视图共用同一外观） =====
    主题强调色胶囊，跟随 Obsidian 主题（var(--gold)）。各视图在模板加 .tk-today-badge 即可，
    组件内仅保留各自特有属性（如月视图 .cel-today 的 align-self）。 */
