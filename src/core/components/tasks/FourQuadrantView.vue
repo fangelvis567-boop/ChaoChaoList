@@ -5,7 +5,8 @@
              :class="{ 'drag-over': dragOverLevel === q.level }"
              @dragover.prevent="dragOverLevel = q.level"
              @drop.prevent="onQuadDrop(q.level, $event)">
-      <header class="tk-quad-hd" :style="{ background: q.color }">
+      <!-- 标题栏的颜色由样式按这一格的主色（section 上的 --q-color）调成色玻璃，不再写死实心底色（自用改版） -->
+      <header class="tk-quad-hd">
         <span class="tk-quad-t">{{ $t(q.titleKey) }}</span>
         <span class="cnt">{{ q.tasks.length }}</span>
         <div class="tk-quad-add" v-tooltip="$t('common.add')" @click.stop="ctx.openNew('', q.level)">
@@ -210,42 +211,84 @@ export default {
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
 }
+/* ===== 每一格：一块带主色的玻璃（自用改版，参照 macOS 的玻璃质感，和竖向菜单是同一路数） =====
+   原来是「实心色标题栏 + 实色描边 + 白底」，现在整格是半透明的色玻璃：
+   底子带一点这一格的主色，标题栏的主色更浓一些，外面一圈细描边、上沿一道高光、紧贴的一小圈投影。
+   所有颜色都从这一格的主色（section 上的 --q-color）调出来，想调深浅只改下面这几行「材料」。 */
 .tk-quad {
+  --q-glass: color-mix(in srgb, var(--q-color) 2.5%, color-mix(in srgb, var(--panel) 82%, transparent));   /* 格子的底：只带一丝主色的半透明底 */
+  --q-head: linear-gradient(180deg, color-mix(in srgb, var(--q-color) 13%, transparent), color-mix(in srgb, var(--q-color) 6%, transparent));   /* 标题栏：比底子稍浓一点的主色玻璃 */
+  --q-ink: color-mix(in srgb, var(--q-color) 62%, #000);                /* 标题文字：把主色压深，保证看得清 */
+  --q-hairline: color-mix(in srgb, var(--q-color) 18%, transparent);    /* 一圈细描边 */
+  --q-rim: rgba(255, 255, 255, .8);                                     /* 上沿的高光 */
+  --q-shadow: 0 3px 10px color-mix(in srgb, var(--q-color) 8%, transparent), 0 1px 2px rgba(0, 0, 0, .04);   /* 投影收得窄，带一点主色 */
+  --q-chip: color-mix(in srgb, var(--q-color) 11%, transparent);        /* 计数胶囊、加号圆钮的底 */
+
+  position: relative;
   display: flex; flex-direction: column; min-height: 0; min-width: 0;
-  background: var(--panel); border: 1px solid var(--q-color);
-  border-radius: var(--radius); overflow: hidden;
+  background: var(--panel);            /* 兜底：不支持 color-mix 时退回实色 */
+  background: var(--q-glass);
+  border: none; border-radius: 16px; overflow: hidden;
+  box-shadow: var(--q-shadow);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+}
+/* 细描边和上沿高光画在最上面一层（盖在标题栏之上），不挡鼠标 */
+.tk-quad::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--q-hairline), inset 0 1px 0 var(--q-rim);
+}
+/* 深色主题：主色加浓，文字改成提亮的主色，高光压暗，投影改用黑色 */
+.theme-dark .tk-quad {
+  --q-glass: color-mix(in srgb, var(--q-color) 5%, color-mix(in srgb, var(--panel) 80%, transparent));
+  --q-head: linear-gradient(180deg, color-mix(in srgb, var(--q-color) 20%, transparent), color-mix(in srgb, var(--q-color) 11%, transparent));
+  --q-ink: color-mix(in srgb, var(--q-color) 62%, #fff);
+  --q-hairline: color-mix(in srgb, var(--q-color) 24%, transparent);
+  --q-rim: rgba(255, 255, 255, .14);
+  --q-shadow: 0 3px 10px rgba(0, 0, 0, .35), 0 1px 2px rgba(0, 0, 0, .25);
+  --q-chip: color-mix(in srgb, var(--q-color) 18%, transparent);
 }
 .tk-quad-hd {
   flex: none; display: flex; align-items: center; gap: 8px;
-  padding: 10px 14px; color: #fff; font-weight: 700; font-size: 14px;
+  /* 标题栏压得比较矮（上下各留 5px，内容高 20px），把地方让给下面的任务 */
+  padding: 5px 12px; color: var(--q-ink); font-weight: 700; font-size: 13.5px; line-height: 20px;
+  background: var(--q-head);
+  border-bottom: 1px solid color-mix(in srgb, var(--q-color) 10%, transparent);
 }
-/* 拖拽悬停的象限：以标题色描一圈，提示可放置 */
-.tk-quad.drag-over { box-shadow: 0 0 0 3px var(--q-color); }
+/* 标题前的小色点：实心的主色，外面一圈淡淡的光晕——标题栏变淡之后，靠它一眼认出是哪一格 */
+.tk-quad-hd::before {
+  content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--q-color); box-shadow: 0 0 0 3px var(--q-chip);
+  margin: 0 3px;
+}
+/* 拖拽悬停的象限：以主色描一圈，提示可放置 */
+.tk-quad.drag-over { box-shadow: 0 0 0 3px var(--q-color), var(--q-shadow); }
 .tk-quad-hd .cnt {
-  font-size: 12px; opacity: .9;
-  background: rgba(255, 255, 255, .22); border-radius: 999px; padding: 1px 9px;
+  font-size: 11.5px; line-height: 18px;
+  background: var(--q-chip); border-radius: 999px; padding: 0 8px;
   font-variant-numeric: tabular-nums;
 }
 /* 象限右上角「添加任务」：仅 hover 该象限时显示，按象限预置优先级（q.level 即 高/中/低/无） */
 .tk-quad-add {
   margin-left: auto; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; border: none; border-radius: 50%;
-  background: rgba(255, 255, 255, .18); color: #fff; font-size: 14px; cursor: pointer;
+  width: 20px; height: 20px; border: none; border-radius: 50%;
+  background: var(--q-chip); color: var(--q-ink); font-size: 12px; cursor: pointer;
   opacity: 0; pointer-events: none;
   transition: opacity .15s ease, background .15s ease;
 }
 .tk-quad:hover .tk-quad-add { opacity: 1; pointer-events: auto; }
-.tk-quad-add:hover { background: rgba(255, 255, 255, .34); }
+.tk-quad-add:hover { background: color-mix(in srgb, var(--q-color) 30%, transparent); }
 .tk-quad-body {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px;
+  /* 主体排得比较紧（自用改版）：四周留白、任务行、分组标题都压了一些，一格里能多放几行 */
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 8px 6px;
   display: flex; flex-direction: column; gap: 0;
 }
 .tk-q-item {
   display: flex; gap: 8px; align-items: center;
-  padding: 8px;
+  padding: 4px 8px;
   /* 任务底部浅灰虚线：用 Obsidian 标准浅灰描边色，淡淡分隔每一行 */
   border-bottom: 1px dashed var(--background-modifier-border);
   background: transparent; cursor: pointer;
@@ -271,11 +314,11 @@ export default {
 .tk-q-date.is-overdue { color: var(--c-cancel); }
 .tk-q-empty { color: var(--ink-soft); opacity: .6; text-align: center; padding: 22px 0; font-size: 12.5px; }
 /* 象限内按日期分组：组头（标签 + 计数 + 已过期的顺延按钮）；上间距加宽，分组间隔更明显 */
-.tk-grp-h { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; cursor: pointer; user-select: none; }
+.tk-grp-h { display: flex; align-items: center; gap: 8px; margin: 6px 0 0; line-height: 18px; cursor: pointer; user-select: none; }
 .tk-grp-h .tk-caret { font-size: 11px; color: var(--ink-soft); transition: transform .15s ease; }
 .tk-grp-h .tk-caret.open { transform: rotate(90deg); }
 /* 组头比任务文字更重：字号略大 + 颜色加深（浅色主题向黑、深色主题向白，双向均更醒目） */
-.tk-grp-label { font-size: 14px; font-weight: 700; color: var(--ink); }
+.tk-grp-label { font-size: 13px; font-weight: 700; color: var(--ink); }
 .theme-light .tk-grp-label { color: color-mix(in srgb, var(--ink) 75%, #000); }
 .theme-dark  .tk-grp-label { color: color-mix(in srgb, var(--ink) 75%, #fff); }
 .tk-grp-h.is-overdue .tk-grp-label { color: #e0584f; }

@@ -86,8 +86,10 @@
 .task-app .tk-row-wrap .tk-row-subs { margin: -4px 0 6px 31px; }
 /* 四象限：父任务与它的子任务算一组，分隔虚线移到子任务清单下方 */
 .task-app .tk-q-item.has-subs { border-bottom: none; }
-.task-app .tk-q-subwrap { padding: 0 8px 6px 27px; border-bottom: 1px dashed var(--background-modifier-border); }
-.task-app .tk-q-subwrap .tk-subl { margin-top: 0; }
+.task-app .tk-q-subwrap { padding: 0 8px 3px 27px; border-bottom: 1px dashed var(--background-modifier-border); }
+.task-app .tk-q-subwrap .tk-subl { margin-top: 0; margin-bottom: 2px; }
+/* 四象限里的子任务行排得紧一些（上下留白 3px → 1px）；列表、日程等别的视图不受影响 */
+.task-app .tk-q-subwrap .tk-subl-row { padding-top: 1px; padding-bottom: 1px; }
 .task-app .tk-q-meta .tk-subprog, .task-app .tk-q-meta .tk-subfold { align-self: center; }
 /* 日程：卡片里的子任务清单 */
 .task-app .tk-ag-card .tk-subl { margin-bottom: 0; }
